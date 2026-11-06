@@ -1,4 +1,5 @@
 using InvoicePilot.Api.Agent;
+using InvoicePilot.Api.Audit;
 using InvoicePilot.Api.Erp;
 using InvoicePilot.Api.Invoices;
 using InvoicePilot.Api.Policy;
@@ -21,7 +22,7 @@ public sealed record ReviewResult(Invoice? Invoice, int Status, string? Title = 
 /// person can't go below what the policy requires: a clerk can't approve what the policy routes or
 /// holds, and nobody can approve what the policy rejects.
 /// </summary>
-public sealed class ReviewService(IInvoiceStore store, IErpStore erp, IOptions<ApPolicyOptions> policy, TimeProvider clock)
+public sealed class ReviewService(IInvoiceStore store, IErpStore erp, IAuditLog audit, IOptions<ApPolicyOptions> policy, TimeProvider clock)
 {
     public async Task<ReviewResult> ActAsync(string id, ReviewRequest request, string actor, CancellationToken ct = default)
     {
@@ -100,6 +101,33 @@ public sealed class ReviewService(IInvoiceStore store, IErpStore erp, IOptions<A
     }
 
     private async Task<ReviewResult> ApplyAsync(Invoice invoice, Outcome outcome, HumanAction action, CancellationToken ct)
+    {
+        var result = await ApplyCoreAsync(invoice, outcome, action, ct);
+        if (result.Invoice is { } saved)
+        {
+            await audit.AppendAsync(saved.Id, action.Actor, $"human.{action.Action}",
+                $"{action.Actor}: {action.Action} → {outcome}{(action.Note is null ? "" : $" ({action.Note})")}",
+                AuditData.Of(("outcome", outcome), ("note", action.Note), ("recommended", invoice.Decision?.Outcome),
+                    ("status", saved.Status)), ct);
+            if (saved.Status == InvoiceStatus.Approved)
+            {
+                await audit.AppendAsync(saved.Id, "system", "erp.booked", $"Booked in the ERP as {saved.Booking}",
+                    AuditData.Of(("key", saved.Booking), ("total", saved.Extraction?.Data.Total), ("currency", saved.Extraction?.Data.Currency)), ct);
+            }
+            if (saved.Status == InvoiceStatus.OnHold && saved.Outbox is { } email)
+            {
+                await audit.AppendAsync(saved.Id, "system", "outbox.queued", $"Email to {email.To} queued: {email.Subject}",
+                    AuditData.Of(("to", email.To), ("subject", email.Subject)), ct);
+            }
+        }
+        else if (result.Title == "Already booked")
+        {
+            await audit.AppendAsync(invoice.Id, "system", "erp.booking_conflict", result.Detail ?? "Already booked", ct: ct);
+        }
+        return result;
+    }
+
+    private async Task<ReviewResult> ApplyCoreAsync(Invoice invoice, Outcome outcome, HumanAction action, CancellationToken ct)
     {
         var actions = (invoice.Actions ?? Array.Empty<HumanAction>()).Append(action).ToList();
         var updated = invoice with { Actions = actions, UpdatedAt = Now(), FailureReason = null };

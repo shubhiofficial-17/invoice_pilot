@@ -46,8 +46,8 @@ Tests: `dotnet test server/InvoicePilot.sln` and `cd web && npm run test:ci`.
 | 5 | Agent loop (own tool calling, state, retries) | ✅ |
 | 6 | AP policy and guardrails | ✅ |
 | 7 | Actions and human approval checkpoints | ✅ |
-| 8 | Audit trail | ⏳ |
-| 9 | AP Inbox UI | |
+| 8 | Audit trail | ✅ |
+| 9 | AP Inbox UI | ⏳ |
 | 10 | Evaluation harness (synthetic invoice set) | |
 | 11 | Hardening: roles, prompt-injection tests, E2E | |
 

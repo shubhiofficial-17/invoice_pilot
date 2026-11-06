@@ -24,11 +24,12 @@ public class ReviewServiceTests
     private readonly InMemoryInvoiceStore _store = new();
     private readonly InMemoryErpStore _erp = new();
     private readonly ReviewService _review;
+    public readonly Api.Audit.InMemoryAuditLog Audit = new(TimeProvider.System);
 
     public ReviewServiceTests()
     {
         _erp.UpsertAsync(ErpSeed.Create()).GetAwaiter().GetResult();
-        _review = new ReviewService(_store, _erp, Options.Create(new ApPolicyOptions()), TimeProvider.System);
+        _review = new ReviewService(_store, _erp, Audit, Options.Create(new ApPolicyOptions()), TimeProvider.System);
     }
 
     /// <summary>An invoice waiting for review, with a real match and a real guardrail decision.</summary>
@@ -206,6 +207,7 @@ public class ReviewServiceTests
         var services = new ServiceCollection()
             .AddSingleton<IInvoiceStore>(_store)
             .AddSingleton<IErpStore>(_erp)
+            .AddSingleton<Api.Audit.IAuditLog>(Audit)
             .AddSingleton(Options.Create(new ApPolicyOptions()))
             .AddSingleton(TimeProvider.System)
             .AddTransient<ReviewService>()

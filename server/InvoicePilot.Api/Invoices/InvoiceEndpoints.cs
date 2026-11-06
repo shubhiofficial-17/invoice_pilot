@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using InvoicePilot.Api.Agent;
+using InvoicePilot.Api.Audit;
 using InvoicePilot.Api.Extraction;
 using InvoicePilot.Api.Matching;
 using InvoicePilot.Api.Review;
@@ -56,7 +57,7 @@ public static class InvoiceEndpoints
                 .Select(i => new { invoiceId = i.Id, email = i.Outbox })));
 
         // Run the agent again on what was already read.
-        invoices.MapPost("/{id}/investigate", async (string id, IInvoiceStore store, AgentQueue queue, TimeProvider clock, CancellationToken ct) =>
+        invoices.MapPost("/{id}/investigate", async (string id, IInvoiceStore store, AgentQueue queue, IAuditLog audit, HttpContext http, TimeProvider clock, CancellationToken ct) =>
         {
             var invoice = await store.GetAsync(id, ct);
             if (invoice is null) return Results.NotFound();
@@ -74,12 +75,13 @@ public static class InvoiceEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Changed meanwhile",
                     detail: "The invoice changed while you were looking at it. Reload and try again.");
             }
+            await audit.AppendAsync(id, ActorOf(http), "agent.requested", "Asked the agent to investigate again", ct: ct);
             queue.Enqueue(id);
             return Results.Accepted($"/api/invoices/{id}", reset);
         });
 
         // Read the invoice again, e.g. after a failure or once AI has been configured.
-        invoices.MapPost("/{id}/extract", async (string id, IInvoiceStore store, ExtractionQueue queue, TimeProvider clock, CancellationToken ct) =>
+        invoices.MapPost("/{id}/extract", async (string id, IInvoiceStore store, ExtractionQueue queue, IAuditLog audit, HttpContext http, TimeProvider clock, CancellationToken ct) =>
         {
             var invoice = await store.GetAsync(id, ct);
             if (invoice is null) return Results.NotFound();
@@ -98,8 +100,17 @@ public static class InvoiceEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Changed meanwhile",
                     detail: "The invoice changed while you were looking at it. Reload and try again.");
             }
+            await audit.AppendAsync(id, ActorOf(http), "extraction.requested", "Asked to read the invoice again", ct: ct);
             queue.Enqueue(id);
             return Results.Accepted($"/api/invoices/{id}", reset);
+        });
+
+        // The audit trail, with a check that the hash chain is intact.
+        invoices.MapGet("/{id}/audit", async (string id, IInvoiceStore store, IAuditLog audit, CancellationToken ct) =>
+        {
+            if (await store.GetAsync(id, ct) is null) return Results.NotFound();
+            var events = await audit.ListAsync(id, ct);
+            return Results.Ok(new { verification = AuditChain.Verify(events), events });
         });
 
         invoices.MapGet("/{id}/file", async (string id, IInvoiceStore store, HttpContext http, CancellationToken ct) =>
@@ -123,7 +134,7 @@ public static class InvoiceEndpoints
         http.User.Identity?.IsAuthenticated == true ? http.User.Identity.Name ?? "unknown" : "clerk";
 
     private static async Task<IResult> UploadAsync(
-        IFormFile? file, IInvoiceStore store, ExtractionQueue queue, TimeProvider clock, CancellationToken ct)
+        IFormFile? file, IInvoiceStore store, ExtractionQueue queue, IAuditLog audit, HttpContext http, TimeProvider clock, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
         {
@@ -167,7 +178,13 @@ public static class InvoiceEndpoints
 
         var (stored, created) = await store.AddAsync(invoice, content, ct);
 
-        if (created) queue.Enqueue(stored.Id);
+        if (created)
+        {
+            await audit.AppendAsync(stored.Id, ActorOf(http), "invoice.received", $"Uploaded {stored.File.FileName}",
+                AuditData.Of(("fileName", stored.File.FileName), ("contentType", stored.File.ContentType),
+                    ("size", stored.File.Size), ("sha256", stored.File.Sha256)), ct);
+            queue.Enqueue(stored.Id);
+        }
 
         // Uploading the same file twice is harmless: you get the invoice that already exists.
         return created
