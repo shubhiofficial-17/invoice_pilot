@@ -48,12 +48,14 @@ Tests: `dotnet test server/InvoicePilot.sln` and `cd web && npm run test:ci`.
 | 7 | Actions and human approval checkpoints | ✅ |
 | 8 | Audit trail | ✅ |
 | 9 | AP Inbox UI | ✅ |
-| 10 | Evaluation harness (synthetic invoice set) | ⏳ |
-| 11 | Hardening: roles, prompt-injection tests, E2E | |
+| 10 | Evaluation harness (synthetic invoice set) | ✅ |
+| 11 | Hardening: roles, prompt-injection tests, E2E | ⏳ |
 
 To read invoices, point the API at an OpenAI-compatible endpoint (normally the LLM Gateway): `Ai__BaseUrl`, `Ai__ApiKey`, `Ai__Model`. Without it, uploads work but invoices are marked "could not read".
 
 With no `ConnectionStrings:Mongo` set, the API uses an in-memory store with the demo ERP data loaded.
+
+Evaluation: 100 labelled synthetic invoices; see [`eval/README.md`](eval/README.md).
 
 Design decisions are recorded in [`docs/adr`](docs/adr).
 

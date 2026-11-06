@@ -22,6 +22,11 @@ jobs:
           dotnet-version: 8.0.x
       - if: steps.has.outputs.code == 'yes'
         run: dotnet test server/InvoicePilot.sln --configuration Release --logger "console;verbosity=normal"
+      - if: steps.has.outputs.code == 'yes' && hashFiles('eval/InvoicePilot.Eval/InvoicePilot.Eval.csproj') != ''
+        name: Evaluation (engine mode, 100 synthetic invoices)
+        run: |
+          dotnet run --project eval/InvoicePilot.Eval --configuration Release -- --mode engine --out eval/results
+          cat eval/results/engine-latest.md >> "$GITHUB_STEP_SUMMARY"
 
   web:
     runs-on: ubuntu-latest

@@ -61,6 +61,11 @@ public static class ErpSeed
         [
             new(1, "CHAIR-ERG", "Ergonomic office chair", 12, 9800.00m, 0.18m),
         ]),
+        // High value: clean, but above the controller's approval limit.
+        new("PO-1009", "SUP-ZEN", "INR", FacilitiesBuyer, PoStatus.Open, new DateOnly(2026, 10, 15),
+        [
+            new(1, "SVC-RACKING", "Warehouse racking installation", 1, 650000.00m, 0.18m),
+        ]),
         // Ordered but nothing received yet.
         new("PO-1008", "SUP-NORTH", "USD", Buyer, PoStatus.Open, new DateOnly(2026, 10, 20),
         [
@@ -78,6 +83,7 @@ public static class ErpSeed
         new("GRN-5006", "PO-1003", new DateOnly(2026, 10, 6), [new(1, 80)]),
         new("GRN-5004", "PO-1004", new DateOnly(2026, 10, 31), [new(1, 1)]),
         new("GRN-5005", "PO-1005", new DateOnly(2026, 10, 22), [new(1, 300)]),
+        new("GRN-5007", "PO-1009", new DateOnly(2026, 10, 30), [new(1, 1)]),
     ];
 
     private static List<PostedInvoice> PostedInvoices() =>
