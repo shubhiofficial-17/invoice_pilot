@@ -14,9 +14,10 @@ public class HealthTests(WebApplicationFactory<Program> factory) : IClassFixture
         var response = await client.GetAsync("/api/health");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<HealthResponse>();
+        var body = await response.Content.ReadFromJsonAsync<HealthResponse>(TestJson.Options);
         Assert.Equal("ok", body!.Status);
         Assert.Equal("invoicepilot-api", body.Service);
+        Assert.Equal("memory", body.Storage);
     }
 
     [Fact]

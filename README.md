@@ -39,8 +39,8 @@ Tests: `dotnet test server/InvoicePilot.sln` and `cd web && npm run test:ci`.
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Skeleton: API, web, Mongo, Docker, CI | ✅ |
-| 2 | Mock ERP: POs, goods receipts, suppliers, invoice history | ⏳ |
-| 3 | Invoice ingestion and extraction | |
+| 2 | Mock ERP: POs, goods receipts, suppliers, invoice history | ✅ |
+| 3 | Invoice ingestion and extraction | ⏳ |
 | 4 | 3-way match engine | |
 | 5 | Agent loop (own tool calling, state, retries) | |
 | 6 | AP policy and guardrails | |
@@ -49,6 +49,8 @@ Tests: `dotnet test server/InvoicePilot.sln` and `cd web && npm run test:ci`.
 | 9 | AP Inbox UI | |
 | 10 | Evaluation harness (synthetic invoice set) | |
 | 11 | Hardening: roles, prompt-injection tests, E2E | |
+
+With no `ConnectionStrings:Mongo` set, the API uses an in-memory store with the demo ERP data loaded.
 
 Design decisions are recorded in [`docs/adr`](docs/adr).
 
