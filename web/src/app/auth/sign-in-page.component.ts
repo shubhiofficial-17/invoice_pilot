@@ -20,8 +20,8 @@ import { problemMessage } from '../invoices/invoices-api';
       }
       <button class="btn primary" type="submit" [disabled]="busy()" data-testid="submit">Sign in</button>
       <p class="muted small">
-        Demo users: asha.rao@… (AP clerk), priya.nair@… / rahul.mehta@… (buyers), ap.manager@…, finance.controller@…
-        (all &#64;invoicepilot.example).
+        Demo users (all at invoicepilot.example): asha.rao (AP clerk), priya.nair and rahul.mehta (buyers),
+        ap.manager, finance.controller.
       </p>
     </form>
   `,
