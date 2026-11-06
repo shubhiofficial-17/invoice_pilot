@@ -47,16 +47,16 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
           @for (invoice of invoices(); track invoice.id) {
             <tr data-testid="invoice-row">
               <td><a [href]="api.fileUrl(invoice.id)" target="_blank" rel="noopener">{{ invoice.file.fileName }}</a></td>
-              <td>{{ invoice.extraction?.data.supplierName ?? '—' }}</td>
-              <td>{{ invoice.extraction?.data.invoiceNumber ?? '—' }}</td>
+              <td>{{ invoice.extraction?.data?.supplierName ?? '—' }}</td>
+              <td>{{ invoice.extraction?.data?.invoiceNumber ?? '—' }}</td>
               <td class="num">
-                @if (invoice.extraction?.data.total != null) {
+                @if (invoice.extraction?.data?.total != null) {
                   {{ invoice.extraction!.data.currency }} {{ invoice.extraction!.data.total | number: '1.2-2' }}
                 } @else { — }
               </td>
               <td>
                 <span class="badge" [class]="invoice.status" [attr.title]="invoice.failureReason">{{ label(invoice.status) }}</span>
-                @if (invoice.extraction?.issues.length) {
+                @if (invoice.extraction?.issues?.length) {
                   <span class="issues" data-testid="issues" [attr.title]="issueText(invoice)">{{ invoice.extraction!.issues.length }} issue(s)</span>
                 }
                 @if (invoice.status === 'extractionFailed') {
