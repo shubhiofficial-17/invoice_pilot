@@ -7,6 +7,9 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
   extracting: 'Reading…',
   extracted: 'Read',
   extractionFailed: 'Could not read',
+  investigating: 'Investigating…',
+  awaitingReview: 'Awaiting review',
+  investigationFailed: 'Agent failed',
 };
 
 @Component({
@@ -59,7 +62,7 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
                 @if (invoice.extraction?.issues?.length) {
                   <span class="issues" data-testid="issues" [attr.title]="issueText(invoice)">{{ invoice.extraction!.issues.length }} issue(s)</span>
                 }
-                @if (invoice.status === 'extractionFailed') {
+                @if (invoice.status === 'extractionFailed' || invoice.status === 'investigationFailed') {
                   <button type="button" class="link" data-testid="retry" (click)="retry(invoice)">Retry</button>
                 }
               </td>

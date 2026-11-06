@@ -8,8 +8,26 @@ public sealed record LlmContentPart(string Type, string? Text = null, string? Im
     public static LlmContentPart FromImage(string dataUrl) => new("image_url", ImageUrl: dataUrl);
 }
 
-public sealed record LlmMessage(string Role, IReadOnlyList<LlmContentPart> Content)
+/// <summary>A function the model may call. Parameters is a JSON Schema object.</summary>
+public sealed record LlmTool(string Name, string Description, System.Text.Json.Nodes.JsonObject Parameters);
+
+/// <summary>A call the model asked for. Arguments is the raw JSON string the model wrote.</summary>
+public sealed record LlmToolCall(string Id, string Name, string Arguments);
+
+public sealed record LlmMessage(
+    string Role,
+    IReadOnlyList<LlmContentPart> Content,
+    IReadOnlyList<LlmToolCall>? ToolCalls = null,
+    string? ToolCallId = null)
 {
+    /// <summary>The model's turn when it asked for tools.</summary>
+    public static LlmMessage AssistantCalls(string? text, IReadOnlyList<LlmToolCall> calls) =>
+        new("assistant", string.IsNullOrEmpty(text) ? [] : [LlmContentPart.FromText(text)], calls);
+
+    /// <summary>A tool's result, answering one call.</summary>
+    public static LlmMessage ToolResult(string toolCallId, string content) =>
+        new("tool", [LlmContentPart.FromText(content)], ToolCallId: toolCallId);
+
     public static LlmMessage System(string text) => new("system", [LlmContentPart.FromText(text)]);
 
     public static LlmMessage User(string text) => new("user", [LlmContentPart.FromText(text)]);
@@ -26,7 +44,8 @@ public sealed record LlmRequest(
     IReadOnlyList<LlmMessage> Messages,
     bool JsonMode = false,
     int MaxTokens = 2000,
-    double Temperature = 0);
+    double Temperature = 0,
+    IReadOnlyList<LlmTool>? Tools = null);
 
 public sealed record LlmUsage(int PromptTokens, int CompletionTokens)
 {
@@ -35,7 +54,10 @@ public sealed record LlmUsage(int PromptTokens, int CompletionTokens)
     public LlmUsage Add(LlmUsage other) => new(PromptTokens + other.PromptTokens, CompletionTokens + other.CompletionTokens);
 }
 
-public sealed record LlmResponse(string Content, string Model, LlmUsage Usage);
+public sealed record LlmResponse(string Content, string Model, LlmUsage Usage, IReadOnlyList<LlmToolCall>? ToolCalls = null)
+{
+    public IReadOnlyList<LlmToolCall> Calls => ToolCalls ?? [];
+}
 
 public interface ILlmClient
 {
