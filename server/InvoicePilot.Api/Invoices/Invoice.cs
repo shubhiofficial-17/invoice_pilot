@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using InvoicePilot.Api.Extraction;
 
 namespace InvoicePilot.Api.Invoices;
 
@@ -17,7 +18,9 @@ public sealed record Invoice(
     InvoiceFile File,
     DateTimeOffset ReceivedAt,
     DateTimeOffset UpdatedAt,
-    int Version);
+    int Version,
+    ExtractionResult? Extraction = null,
+    string? FailureReason = null);
 
 public static class InvoiceIds
 {

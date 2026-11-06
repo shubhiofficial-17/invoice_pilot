@@ -123,7 +123,9 @@ public class InvoiceUploadTests(WebApplicationFactory<Program> factory) : IClass
         var one = await _client.GetFromJsonAsync<Invoice>($"/api/invoices/{invoice!.Id}", TestJson.Options);
 
         Assert.Contains(list!, i => i.Id == invoice.Id);
-        Assert.Equal(invoice, one);
+        // The background reader may already have moved it on, so compare what can't change.
+        Assert.Equal(invoice.Id, one!.Id);
+        Assert.Equal(invoice.File, one.File);
     }
 
     [Theory]

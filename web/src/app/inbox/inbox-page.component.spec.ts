@@ -12,6 +12,8 @@ function invoice(id: string, fileName = `${id}.pdf`): Invoice {
     receivedAt: '2026-11-06T10:00:00Z',
     updatedAt: '2026-11-06T10:00:00Z',
     version: 1,
+    extraction: null,
+    failureReason: null,
   };
 }
 
@@ -41,6 +43,43 @@ describe('InboxPageComponent', () => {
     expect(rows().length).toBe(2);
     expect(rows()[0].textContent).toContain('ap_1.pdf');
     expect(rows()[0].querySelector('a')?.getAttribute('href')).toBe('/api/invoices/ap_1/file');
+  });
+
+  it('shows what was read from an invoice', () => {
+    const read: Invoice = {
+      ...invoice('ap_read'),
+      status: 'extracted',
+      extraction: {
+        data: {
+          supplierName: 'Acme Industrial Supplies', supplierTaxId: null, invoiceNumber: 'AC/2026/0420',
+          invoiceDate: '2026-11-02', dueDate: null, poNumber: 'PO-1001', currency: 'INR',
+          lines: [], subtotal: 5700, taxTotal: 1026, total: 6726,
+        },
+        issues: [{ code: 'total_mismatch', message: 'Totals do not add up.' }],
+        source: 'pdf-text', model: 'm', attempts: 1, usage: { promptTokens: 1, completionTokens: 1 }, at: '2026-11-06T10:00:00Z',
+      },
+    };
+    http.expectOne('/api/invoices').flush([read]);
+    fixture.detectChanges();
+
+    const text = rows()[0].textContent ?? '';
+    expect(text).toContain('Acme Industrial Supplies');
+    expect(text).toContain('AC/2026/0420');
+    expect(text).toContain('INR 6,726.00');
+    expect(el().querySelector('[data-testid=issues]')?.textContent).toContain('1 issue');
+  });
+
+  it('retries a failed invoice', () => {
+    const failed: Invoice = { ...invoice('ap_bad'), status: 'extractionFailed', failureReason: 'No AI' };
+    http.expectOne('/api/invoices').flush([failed]);
+    fixture.detectChanges();
+
+    (el().querySelector('[data-testid=retry]') as HTMLButtonElement).click();
+    http.expectOne({ method: 'POST', url: '/api/invoices/ap_bad/extract' }).flush({ ...failed, status: 'received', failureReason: null });
+    fixture.detectChanges();
+
+    expect(el().querySelector('[data-testid=retry]')).toBeNull();
+    expect(rows()[0].textContent).toContain('Received');
   });
 
   it('shows an empty state', () => {
