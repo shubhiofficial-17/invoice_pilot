@@ -1,0 +1,29 @@
+services:
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./server
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Mongo: mongodb://mongo:27017/invoicepilot
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+
+volumes:
+  mongo-data:
