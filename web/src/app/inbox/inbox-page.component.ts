@@ -1,25 +1,19 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Invoice, InvoiceStatus, InvoicesApi, problemMessage } from '../invoices/invoices-api';
+import { RouterLink } from '@angular/router';
+import { Invoice, InvoiceStatus, InvoicesApi, PROCESSING, STATUS_LABELS, problemMessage } from '../invoices/invoices-api';
 
-const STATUS_LABELS: Record<InvoiceStatus, string> = {
-  received: 'Received',
-  extracting: 'Reading…',
-  extracted: 'Read',
-  extractionFailed: 'Could not read',
-  investigating: 'Investigating…',
-  awaitingReview: 'Awaiting review',
-  investigationFailed: 'Agent failed',
-  awaitingApproval: 'Awaiting approver',
-  approved: 'Approved',
-  onHold: 'On hold',
-  rejected: 'Rejected',
-};
+export type InboxFilter = 'all' | 'review' | 'processing' | 'done';
+
+const REVIEW: ReadonlySet<InvoiceStatus> = new Set<InvoiceStatus>([
+  'awaitingReview', 'awaitingApproval', 'investigationFailed', 'extractionFailed',
+]);
+
 
 @Component({
   selector: 'ip-inbox-page',
   standalone: true,
-  imports: [DatePipe, DecimalPipe],
+  imports: [DatePipe, DecimalPipe, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="head">
@@ -37,6 +31,14 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
       </label>
     </div>
 
+    <nav class="filters">
+      @for (f of filters; track f.key) {
+        <button type="button" class="chip" [class.on]="filter() === f.key" [attr.data-testid]="'filter-' + f.key" (click)="filter.set(f.key)">
+          {{ f.label }} <span class="count">{{ count(f.key) }}</span>
+        </button>
+      }
+    </nav>
+
     @if (error()) {
       <p class="error" role="alert" data-testid="error">{{ error() }}</p>
     }
@@ -51,9 +53,9 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
           <tr><th>File</th><th>Supplier</th><th>Invoice #</th><th class="num">Total</th><th>Status</th><th>Received</th></tr>
         </thead>
         <tbody>
-          @for (invoice of invoices(); track invoice.id) {
+          @for (invoice of visible(); track invoice.id) {
             <tr data-testid="invoice-row">
-              <td><a [href]="api.fileUrl(invoice.id)" target="_blank" rel="noopener">{{ invoice.file.fileName }}</a></td>
+              <td><a [routerLink]="['/invoices', invoice.id]" data-testid="open">{{ invoice.file.fileName }}</a></td>
               <td>{{ invoice.extraction?.data?.supplierName ?? '—' }}</td>
               <td>{{ invoice.extraction?.data?.invoiceNumber ?? '—' }}</td>
               <td class="num">
@@ -91,9 +93,10 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
     th, td { text-align: left; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); }
     th { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
     .num { text-align: right; }
-    .badge { font-size: 0.8rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--bg); }
-    .badge.extracted { color: var(--ok); }
-    .badge.extractionFailed { color: var(--bad); }
+    .filters { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 0.25rem 0.75rem; cursor: pointer; font: inherit; }
+    .chip.on { border-color: var(--accent); color: var(--accent); }
+    .count { color: var(--muted); font-size: 0.8rem; }
   `,
 })
 export class InboxPageComponent implements OnInit {
@@ -103,16 +106,35 @@ export class InboxPageComponent implements OnInit {
   readonly loading = signal(true);
   readonly uploading = signal(false);
   readonly error = signal<string | null>(null);
+  readonly filter = signal<InboxFilter>('all');
+  readonly filters: { key: InboxFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'review', label: 'Needs a person' },
+    { key: 'processing', label: 'In progress' },
+    { key: 'done', label: 'Done' },
+  ];
+  readonly visible = computed(() => this.invoices().filter((i) => this.matches(this.filter(), i.status)));
+
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.stopPolling());
+  }
 
   ngOnInit(): void {
     this.load();
   }
 
   load(): void {
+    this.stopPolling();
     this.api.list().subscribe({
       next: (list) => {
         this.invoices.set(list);
         this.loading.set(false);
+        // Keep the list fresh while the pipeline is working on something.
+        if (list.some((i) => PROCESSING.has(i.status))) {
+          this.timer = setTimeout(() => this.load(), 3000);
+        }
       },
       error: (err) => {
         this.error.set(problemMessage(err, 'Could not load invoices.'));
@@ -141,6 +163,30 @@ export class InboxPageComponent implements OnInit {
     return STATUS_LABELS[status] ?? status;
   }
 
+  count(filter: InboxFilter): number {
+    return this.invoices().filter((i) => this.matches(filter, i.status)).length;
+  }
+
+  private matches(filter: InboxFilter, status: InvoiceStatus): boolean {
+    switch (filter) {
+      case 'review':
+        return REVIEW.has(status);
+      case 'processing':
+        return PROCESSING.has(status);
+      case 'done':
+        return !REVIEW.has(status) && !PROCESSING.has(status);
+      default:
+        return true;
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
   onFileChosen(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -156,6 +202,9 @@ export class InboxPageComponent implements OnInit {
         // Re-uploading a file returns the invoice that already exists; show it once, at the top.
         this.invoices.update((list) => [invoice, ...list.filter((i) => i.id !== invoice.id)]);
         this.uploading.set(false);
+        if (PROCESSING.has(invoice.status) && this.timer === null) {
+          this.timer = setTimeout(() => this.load(), 3000);
+        }
       },
       error: (err) => {
         this.error.set(problemMessage(err, 'Upload failed.'));

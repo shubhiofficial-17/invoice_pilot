@@ -1,13 +1,14 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { InboxPageComponent } from './inbox-page.component';
 import { Invoice } from '../invoices/invoices-api';
 
 function invoice(id: string, fileName = `${id}.pdf`): Invoice {
   return {
     id,
-    status: 'received',
+    status: 'awaitingReview',
     file: { fileName, contentType: 'application/pdf', size: 2048, sha256: id },
     receivedAt: '2026-11-06T10:00:00Z',
     updatedAt: '2026-11-06T10:00:00Z',
@@ -28,7 +29,7 @@ describe('InboxPageComponent', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [InboxPageComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(InboxPageComponent);
@@ -43,7 +44,7 @@ describe('InboxPageComponent', () => {
 
     expect(rows().length).toBe(2);
     expect(rows()[0].textContent).toContain('ap_1.pdf');
-    expect(rows()[0].querySelector('a')?.getAttribute('href')).toBe('/api/invoices/ap_1/file');
+    expect(rows()[0].querySelector('a')?.getAttribute('href')).toBe('/invoices/ap_1');
   });
 
   it('shows what was read from an invoice', () => {
@@ -81,7 +82,35 @@ describe('InboxPageComponent', () => {
 
     expect(el().querySelector('[data-testid=retry]')).toBeNull();
     expect(rows()[0].textContent).toContain('Received');
+    fixture.destroy(); // stops the refresh timer started for the processing invoice
   });
+
+  it('filters by what needs a person', () => {
+    http.expectOne('/api/invoices').flush([
+      invoice('ap_review'),
+      { ...invoice('ap_done'), status: 'approved' },
+      { ...invoice('ap_held'), status: 'onHold' },
+    ]);
+    fixture.detectChanges();
+    expect(rows().length).toBe(3);
+
+    (el().querySelector('[data-testid=filter-review]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(rows().length).toBe(1);
+    expect(el().querySelector('[data-testid=filter-review]')?.textContent).toContain('1');
+
+    (el().querySelector('[data-testid=filter-done]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(rows().length).toBe(2);
+  });
+
+  it('refreshes while something is being processed', fakeAsync(() => {
+    http.expectOne('/api/invoices').flush([{ ...invoice('ap_busy'), status: 'investigating' }]);
+    tick(3000);
+    http.expectOne('/api/invoices').flush([{ ...invoice('ap_busy'), status: 'awaitingReview' }]);
+    tick(3000);
+    http.expectNone('/api/invoices');
+  }));
 
   it('shows an empty state', () => {
     http.expectOne('/api/invoices').flush([]);

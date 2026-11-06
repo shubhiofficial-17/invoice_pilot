@@ -1,0 +1,185 @@
+<p><a routerLink="/">← AP Inbox</a></p>
+
+@if (error()) {
+  <p class="error" role="alert" data-testid="error">{{ error() }}</p>
+}
+
+@if (invoice(); as inv) {
+  <header class="title">
+    <h1>{{ inv.extraction?.data?.invoiceNumber ?? inv.file.fileName }}</h1>
+    <span class="badge" [class]="inv.status" data-testid="status">{{ statusLabels[inv.status] }}</span>
+    @if (processing()) {
+      <span class="muted">working on it…</span>
+    }
+  </header>
+
+  <div class="layout">
+    <section class="doc card">
+      @if (isImage()) {
+        <img [src]="fileUrl()" alt="Invoice image" />
+      } @else {
+        <iframe [src]="pdfUrl()" title="Invoice document" data-testid="pdf"></iframe>
+      }
+    </section>
+
+    <section class="side">
+      @if (inv.failureReason) {
+        <div class="card warn" data-testid="failure">
+          <strong>Needs attention:</strong> {{ inv.failureReason }}
+          @if (inv.status === 'investigationFailed') {
+            <button type="button" class="link" (click)="investigate()">Run the agent again</button>
+          }
+        </div>
+      }
+
+      @if (inv.decision; as d) {
+        <div class="card" data-testid="decision">
+          <h2>Recommendation</h2>
+          <p class="outcome">
+            <span class="badge" [class]="d.outcome" data-testid="outcome">{{ outcomeLabels[d.outcome] }}</span>
+            <span class="muted">{{ sourceLabels[d.source] }}</span>
+          </p>
+          <p data-testid="reason">{{ d.reason }}</p>
+          @if (d.approver) {
+            <p class="muted">Approver: {{ d.approver.email }} ({{ d.approver.role }})</p>
+          }
+          @if (d.supplierEmail; as mail) {
+            <details>
+              <summary>Email to {{ mail.to }}: {{ mail.subject }}</summary>
+              <pre class="mono">{{ mail.body }}</pre>
+            </details>
+          }
+
+          @if (canReview()) {
+            <div class="actions">
+              <button type="button" class="btn primary" data-testid="confirm" [disabled]="busy()" (click)="confirm()">
+                Confirm: {{ outcomeLabels[d.outcome] }}
+              </button>
+              <button type="button" class="btn" data-testid="toggle-override" (click)="showOverride.set(!showOverride())">Change…</button>
+            </div>
+            @if (showOverride()) {
+              <div class="override">
+                <label>
+                  Outcome
+                  <select [(ngModel)]="overrideOutcome" data-testid="override-outcome">
+                    @for (o of outcomes; track o) {
+                      <option [value]="o" [disabled]="!allowed(o)">{{ outcomeLabels[o] }}{{ allowed(o) ? '' : ' (not allowed by policy)' }}</option>
+                    }
+                  </select>
+                </label>
+                <textarea [(ngModel)]="note" rows="2" placeholder="Why? (required)" data-testid="note"></textarea>
+                <button type="button" class="btn" data-testid="submit-override" [disabled]="busy() || note.trim().length < 5"
+                  (click)="submitOverride()">Save decision</button>
+              </div>
+            }
+          }
+
+          @if (canApprove()) {
+            <div class="override">
+              <textarea [(ngModel)]="note" rows="2" placeholder="Note (required to reject)" data-testid="note"></textarea>
+              <div class="actions">
+                <button type="button" class="btn primary" data-testid="approve" [disabled]="busy()" (click)="approve()">Approve</button>
+                <button type="button" class="btn" data-testid="reject" [disabled]="busy() || note.trim().length < 5" (click)="reject()">Reject</button>
+              </div>
+            </div>
+          }
+
+          @if (inv.booking) {
+            <p class="muted" data-testid="booking">Booked in the ERP as {{ inv.booking }}.</p>
+          }
+          @if (inv.outbox; as out) {
+            <p class="muted" data-testid="outbox">Email to {{ out.to }} queued {{ out.queuedAt | date: 'd MMM, HH:mm' }}.</p>
+          }
+        </div>
+      }
+
+      @if (inv.match; as m) {
+        <div class="card" data-testid="findings">
+          <h2>3-way match: {{ m.supplierName ?? 'unknown supplier' }} · {{ m.poNumber ?? 'no PO' }}</h2>
+          @if (m.findings.length === 0) {
+            <p class="muted">Matches the PO and the goods receipts.</p>
+          } @else {
+            <table class="grid">
+              @for (f of m.findings; track $index) {
+                <tr data-testid="finding">
+                  <td><span class="badge" [class]="f.severity">{{ f.severity }}</span></td>
+                  <td>{{ f.message }}</td>
+                </tr>
+              }
+            </table>
+          }
+        </div>
+      }
+
+      @if (inv.extraction; as x) {
+        <div class="card">
+          <h2>What the invoice says</h2>
+          <p>
+            {{ x.data.supplierName ?? '—' }} · {{ x.data.invoiceDate ?? 'no date' }} · PO {{ x.data.poNumber ?? '—' }}
+          </p>
+          <table class="grid">
+            <tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Amount</th></tr>
+            @for (l of x.data.lines; track $index) {
+              <tr>
+                <td>{{ l.description }}</td>
+                <td class="num">{{ l.quantity | number }}</td>
+                <td class="num">{{ l.unitPrice | number: '1.2-2' }}</td>
+                <td class="num">{{ (l.amount ?? l.quantity * l.unitPrice) | number: '1.2-2' }}</td>
+              </tr>
+            }
+            <tr><td colspan="3">Tax</td><td class="num">{{ x.data.taxTotal | number: '1.2-2' }}</td></tr>
+            <tr>
+              <th colspan="3">Total</th>
+              <th class="num" data-testid="total">{{ x.data.currency }} {{ x.data.total | number: '1.2-2' }}</th>
+            </tr>
+          </table>
+          <p class="muted small">Read by {{ x.model }} from {{ x.source }} in {{ x.attempts }} attempt(s).</p>
+        </div>
+      }
+
+      @if (inv.agent; as run) {
+        <div class="card">
+          <h2>
+            Agent: {{ run.modelCalls }} model calls, {{ toolSteps().length }} tool calls,
+            {{ run.usage.promptTokens + run.usage.completionTokens | number }} tokens
+            <button type="button" class="link" data-testid="toggle-trace" (click)="showTrace.set(!showTrace())">
+              {{ showTrace() ? 'hide' : 'show' }} trace
+            </button>
+          </h2>
+          @if (showTrace()) {
+            <ol class="trace">
+              @for (s of toolSteps(); track s.index) {
+                <li data-testid="trace-step" [class.err]="s.isError">
+                  <code>{{ s.toolName }}({{ s.arguments }})</code>
+                  <pre class="mono">{{ s.output }}</pre>
+                </li>
+              }
+            </ol>
+          }
+        </div>
+      }
+
+      @if (audit(); as trail) {
+        <div class="card" data-testid="audit">
+          <h2>
+            Audit trail
+            @if (trail.verification.intact) {
+              <span class="badge approve" data-testid="chain-ok">chain verified ({{ trail.verification.count }})</span>
+            } @else {
+              <span class="badge reject" data-testid="chain-broken">broken at #{{ trail.verification.brokenAtSeq }}</span>
+            }
+          </h2>
+          <ol class="audit">
+            @for (e of trail.events; track e.seq) {
+              <li>
+                <span class="muted">{{ e.at | date: 'HH:mm:ss' }}</span> <strong>{{ e.actor }}</strong> {{ e.summary }}
+              </li>
+            }
+          </ol>
+        </div>
+      }
+    </section>
+  </div>
+} @else if (!error()) {
+  <p class="muted">Loading…</p>
+}
