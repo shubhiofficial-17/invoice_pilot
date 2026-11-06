@@ -70,7 +70,8 @@ public sealed class InvoiceAgent(
             LlmResponse reply;
             try
             {
-                reply = await CallWithRetriesAsync(new LlmRequest(messages, MaxTokens: 1500, Tools: toolDefs), o, ct);
+                // A snapshot: the list keeps growing after this call.
+                reply = await CallWithRetriesAsync(new LlmRequest(messages.ToList(), MaxTokens: 1500, Tools: toolDefs), o, ct);
             }
             catch (LlmUnavailableException e)
             {
