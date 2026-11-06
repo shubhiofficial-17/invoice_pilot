@@ -51,7 +51,7 @@ public static class InvoiceEndpoints
             }
             var reset = await store.TryUpdateAsync(invoice with
             {
-                Status = InvoiceStatus.Extracted, Agent = null, FailureReason = null, UpdatedAt = clock.GetUtcNow(),
+                Status = InvoiceStatus.Extracted, Agent = null, Match = null, Decision = null, FailureReason = null, UpdatedAt = clock.GetUtcNow(),
             }, ct);
             if (reset is null)
             {
@@ -75,7 +75,7 @@ public static class InvoiceEndpoints
             }
             var reset = await store.TryUpdateAsync(invoice with
             {
-                Status = InvoiceStatus.Received, Extraction = null, Agent = null, FailureReason = null, UpdatedAt = clock.GetUtcNow(),
+                Status = InvoiceStatus.Received, Extraction = null, Agent = null, Match = null, Decision = null, FailureReason = null, UpdatedAt = clock.GetUtcNow(),
             }, ct);
             if (reset is null)
             {

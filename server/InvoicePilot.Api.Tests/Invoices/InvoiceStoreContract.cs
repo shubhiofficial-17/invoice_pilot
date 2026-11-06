@@ -87,6 +87,39 @@ public abstract class InvoiceStoreContract
     }
 
     [Fact]
+    public async Task Agent_trace_match_and_decision_round_trip_with_exact_amounts()
+    {
+        var store = await CreateStoreAsync();
+        var invoice = NewInvoice("snap");
+        await store.AddAsync(invoice, [1]);
+        var data = Matching.MatchEngineTests.Billing("PO-1005");
+        var match = Matching.MatchEngineTests.Match(data);
+        var decision = await new Api.Policy.DecisionService(await SeededErp(), Microsoft.Extensions.Options.Options.Create(new Api.Policy.ApPolicyOptions()))
+            .DecideAsync(match, new Api.Agent.AgentProposal(Api.Agent.Outcome.Approve, "r", ["quantity_exceeds_received"], null));
+        var run = new Api.Agent.AgentRun("m", Api.Agent.AgentRunStatus.Completed, null, null,
+            [new Api.Agent.AgentStep(1, Api.Agent.StepKind.Tool, "get_invoice", "{}", "{\"a\":1}", false, 1, 2, 3, T0)],
+            new Api.Ai.LlmUsage(10, 20), 1, T0, T0);
+
+        await store.TryUpdateAsync(invoice with { Agent = run, Match = match, Decision = decision });
+        var loaded = (await store.GetAsync(invoice.Id))!;
+
+        Assert.Equal(85.00m, loaded.Match!.Lines[0].PoUnitPrice);
+        Assert.Equal("85.00", loaded.Match.Lines[0].PoUnitPrice!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(match.Findings.Count, loaded.Match.Findings.Count);
+        Assert.Equal(Api.Agent.Outcome.Hold, loaded.Decision!.Outcome);
+        Assert.Equal(decision.SupplierEmail, loaded.Decision.SupplierEmail);
+        Assert.Equal("{\"a\":1}", loaded.Agent!.Steps[0].Output);
+        Assert.Equal(new Api.Ai.LlmUsage(10, 20), loaded.Agent.Usage);
+    }
+
+    private static async Task<Api.Erp.IErpStore> SeededErp()
+    {
+        var erp = new Api.Erp.InMemoryErpStore();
+        await erp.UpsertAsync(Api.Erp.ErpSeed.Create());
+        return erp;
+    }
+
+    [Fact]
     public async Task Update_of_a_missing_invoice_returns_null()
     {
         var store = await CreateStoreAsync();

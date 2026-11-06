@@ -106,12 +106,17 @@ public sealed class MongoInvoiceStore : IInvoiceStore
     }
 }
 
-/// <summary>Stores nested, money-free records (like agent traces) as BSON via System.Text.Json.</summary>
+/// <summary>
+/// Stores nested snapshot records (agent traces, match reports, decisions) as BSON via System.Text.Json.
+/// Numbers are written as strings, so a decimal like 4.50 comes back exactly (BSON parsing would make it a double).
+/// </summary>
 public static class StoredJson
 {
     private static readonly System.Text.Json.JsonSerializerOptions Options = new(System.Text.Json.JsonSerializerDefaults.Web)
     {
         Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) },
+        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+            | System.Text.Json.Serialization.JsonNumberHandling.WriteAsString,
     };
 
     public static BsonDocument ToBson<T>(T value) => BsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(value, Options));
@@ -150,6 +155,11 @@ public sealed class InvoiceDoc
     /// <summary>The agent's trace, stored as a JSON document (no money in it; see ADR 0006).</summary>
     public BsonDocument? Agent { get; set; }
 
+    /// <summary>Snapshot of the match the decision was based on. Amounts inside are stored as exact decimal strings.</summary>
+    public BsonDocument? Match { get; set; }
+
+    public BsonDocument? Decision { get; set; }
+
     public static InvoiceDoc From(Invoice i) => new()
     {
         Id = i.Id,
@@ -164,6 +174,8 @@ public sealed class InvoiceDoc
         Extraction = i.Extraction is null ? null : ExtractionDoc.From(i.Extraction),
         FailureReason = i.FailureReason,
         Agent = i.Agent is null ? null : StoredJson.ToBson(i.Agent),
+        Match = i.Match is null ? null : StoredJson.ToBson(i.Match),
+        Decision = i.Decision is null ? null : StoredJson.ToBson(i.Decision),
     };
 
     public Invoice ToModel() => new(
@@ -175,5 +187,7 @@ public sealed class InvoiceDoc
         Version,
         Extraction?.ToModel(),
         FailureReason,
-        Agent is null ? null : StoredJson.FromBson<InvoicePilot.Api.Agent.AgentRun>(Agent));
+        Agent is null ? null : StoredJson.FromBson<InvoicePilot.Api.Agent.AgentRun>(Agent),
+        Match is null ? null : StoredJson.FromBson<InvoicePilot.Api.Matching.MatchReport>(Match),
+        Decision is null ? null : StoredJson.FromBson<InvoicePilot.Api.Policy.Decision>(Decision));
 }
