@@ -86,6 +86,11 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Ai:BaseUrl"]))
 {
     builder.Services.AddHttpClient<ILlmClient, OpenAiCompatibleLlmClient>();
 }
+else if (string.Equals(builder.Configuration["Ai:Provider"], "demo", StringComparison.OrdinalIgnoreCase))
+{
+    // Rule-based stand-in for demos and end-to-end tests; see DemoLlmClient.
+    builder.Services.AddSingleton<ILlmClient, DemoLlmClient>();
+}
 else
 {
     builder.Services.AddSingleton<ILlmClient, DisabledLlmClient>();
