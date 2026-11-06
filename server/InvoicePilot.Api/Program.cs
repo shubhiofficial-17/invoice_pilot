@@ -6,6 +6,7 @@ using InvoicePilot.Api.Extraction;
 using InvoicePilot.Api.Erp.Mongo;
 using InvoicePilot.Api.Invoices;
 using InvoicePilot.Api.Invoices.Mongo;
+using InvoicePilot.Api.Matching;
 using Microsoft.AspNetCore.Http.Features;
 using MongoDB.Driver;
 
@@ -47,6 +48,7 @@ else
 }
 builder.Services.AddTransient<InvoiceExtractor>();
 builder.Services.AddSingleton<ExtractionQueue>();
+builder.Services.AddTransient<MatchService>();
 
 builder.Services.AddHostedService<ErpSeeder>();
 builder.Services.AddHostedService<InvoiceStoreInitializer>();
