@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: has
+        run: echo "code=$([ -f server/InvoicePilot.sln ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - if: steps.has.outputs.code == 'yes'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - if: steps.has.outputs.code == 'yes'
+        run: dotnet test server/InvoicePilot.sln --configuration Release --logger "console;verbosity=normal"
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - id: has
+        working-directory: .
+        run: echo "code=$([ -f web/package.json ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - if: steps.has.outputs.code == 'yes'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - if: steps.has.outputs.code == 'yes'
+        run: npm install --no-audit --no-fund
+      - if: steps.has.outputs.code == 'yes'
+        run: npx ng test --watch=false --browsers=ChromeHeadlessCI
+      - if: steps.has.outputs.code == 'yes'
+        run: npx ng build
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [server, web]
+    steps:
+      - uses: actions/checkout@v4
+      - id: has
+        run: echo "code=$([ -f docker-compose.yml ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - if: steps.has.outputs.code == 'yes'
+        run: docker compose build
+      - if: steps.has.outputs.code == 'yes'
+        name: Start the stack and check health
+        run: |
+          docker compose up -d
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/api/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+      - if: always() && steps.has.outputs.code == 'yes'
+        run: docker compose down -v

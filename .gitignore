@@ -1,0 +1,21 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+coverage/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local secrets
+.env
+appsettings.Local.json
