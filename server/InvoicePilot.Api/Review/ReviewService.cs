@@ -1,3 +1,4 @@
+using InvoicePilot.Api.Accounts;
 using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Audit;
 using InvoicePilot.Api.Erp;
@@ -24,8 +25,13 @@ public sealed record ReviewResult(Invoice? Invoice, int Status, string? Title = 
 /// </summary>
 public sealed class ReviewService(IInvoiceStore store, IErpStore erp, IAuditLog audit, IOptions<ApPolicyOptions> policy, TimeProvider clock)
 {
-    public async Task<ReviewResult> ActAsync(string id, ReviewRequest request, string actor, CancellationToken ct = default)
+    /// <summary>Acting with sign-in rules off (tests, scripts): no role checks.</summary>
+    public Task<ReviewResult> ActAsync(string id, ReviewRequest request, string actor, CancellationToken ct = default) =>
+        ActAsync(id, request, new Reviewer(actor, Roles.Admin, Enforced: false), ct);
+
+    public async Task<ReviewResult> ActAsync(string id, ReviewRequest request, Reviewer reviewer, CancellationToken ct = default)
     {
+        var actor = reviewer.Email;
         var invoice = await store.GetAsync(id, ct);
         if (invoice is null) return ReviewResult.Fail(404, "Not found", $"Invoice {id} does not exist.");
         if (invoice.Version != request.ExpectedVersion)
@@ -35,12 +41,42 @@ public sealed class ReviewService(IInvoiceStore store, IErpStore erp, IAuditLog 
         var note = request.Note?.Trim();
         if (note is { Length: > 2000 }) return ReviewResult.Fail(422, "Note too long", "Keep the note under 2000 characters.");
 
+        if (Forbidden(invoice, reviewer) is { } forbidden) return forbidden;
+
         return invoice.Status switch
         {
             InvoiceStatus.AwaitingReview or InvoiceStatus.InvestigationFailed => await ReviewAsync(invoice, request, note, actor, ct),
             InvoiceStatus.AwaitingApproval => await ApproveStepAsync(invoice, request, note, actor, ct),
             _ => ReviewResult.Fail(409, "Nothing to decide", $"The invoice is {invoice.Status}; there is nothing to review."),
         };
+    }
+
+    /// <summary>
+    /// Who may act: reviewing is the AP clerk's job; approving is the named approver's, and never the same
+    /// person who processed the invoice (segregation of duties). Admins may review, but the same rule applies.
+    /// </summary>
+    private static ReviewResult? Forbidden(Invoice invoice, Reviewer reviewer)
+    {
+        if (!reviewer.Enforced) return null;
+        if (invoice.Status is InvoiceStatus.AwaitingReview or InvoiceStatus.InvestigationFailed)
+        {
+            return reviewer.Role is Roles.Clerk or Roles.Admin
+                ? null
+                : ReviewResult.Fail(403, "Not your step", "Reviewing invoices is done by the AP team.");
+        }
+        if (invoice.Status == InvoiceStatus.AwaitingApproval)
+        {
+            if ((invoice.Actions ?? Array.Empty<HumanAction>()).Any(a => string.Equals(a.Actor, reviewer.Email, StringComparison.OrdinalIgnoreCase)))
+            {
+                return ReviewResult.Fail(403, "Someone else must approve", "You processed this invoice, so you can't also approve it.");
+            }
+            var approver = invoice.Decision?.Approver?.Email;
+            var isApprover = approver is not null && string.Equals(approver, reviewer.Email, StringComparison.OrdinalIgnoreCase);
+            return isApprover || reviewer.Role == Roles.Admin
+                ? null
+                : ReviewResult.Fail(403, "Not your approval", $"This invoice waits for {approver ?? "an approver"}.");
+        }
+        return null;
     }
 
     private async Task<ReviewResult> ReviewAsync(Invoice invoice, ReviewRequest request, string? note, string actor, CancellationToken ct)

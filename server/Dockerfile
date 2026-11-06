@@ -9,6 +9,8 @@ RUN dotnet publish InvoicePilot.Api/InvoicePilot.Api.csproj -c Release -o /app -
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 COPY --from=build /app .
+# Data Protection keys (they encrypt the sign-in cookie) live on a volume owned by the app user.
+RUN mkdir -p /keys && chown app /keys
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 USER app

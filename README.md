@@ -22,8 +22,10 @@ Angular 18 (signals) · .NET 8 minimal APIs · MongoDB · Docker · GitHub Actio
 
 ```bash
 docker compose up --build
-# open http://localhost:8080
+# open http://localhost:8080 and sign in as asha.rao@invoicepilot.example / invoicepilot-demo
 ```
+
+Demo users (password `invoicepilot-demo`, change with `DEMO_PASSWORD`): `asha.rao@` (AP clerk), `priya.nair@` and `rahul.mehta@` (buyers), `ap.manager@`, `finance.controller@`, all `@invoicepilot.example`.
 
 For development:
 
@@ -49,7 +51,8 @@ Tests: `dotnet test server/InvoicePilot.sln` and `cd web && npm run test:ci`.
 | 8 | Audit trail | ✅ |
 | 9 | AP Inbox UI | ✅ |
 | 10 | Evaluation harness (synthetic invoice set) | ✅ |
-| 11 | Hardening: roles, prompt-injection tests, E2E | ⏳ |
+| 11a | Sign-in, roles, segregation of duties, rate limits | ✅ |
+| 11b | Demo mode (no API key) and end-to-end tests | ⏳ |
 
 To read invoices, point the API at an OpenAI-compatible endpoint (normally the LLM Gateway): `Ai__BaseUrl`, `Ai__ApiKey`, `Ai__Model`. Without it, uploads work but invoices are marked "could not read".
 
