@@ -9,8 +9,23 @@ namespace InvoicePilot.Api.Invoices;
 /// <summary>
 /// The pipeline: Received → Extracting → Extracted → Investigating → AwaitingReview.
 /// A failed step parks the invoice in ExtractionFailed or InvestigationFailed for a person.
+/// A person then moves it to Approved (booked), OnHold (supplier emailed), Rejected,
+/// or AwaitingApproval (an approver decides).
 /// </summary>
-public enum InvoiceStatus { Received, Extracting, Extracted, ExtractionFailed, Investigating, AwaitingReview, InvestigationFailed }
+public enum InvoiceStatus
+{
+    Received, Extracting, Extracted, ExtractionFailed, Investigating, AwaitingReview, InvestigationFailed,
+    AwaitingApproval, Approved, OnHold, Rejected,
+}
+
+/// <summary>Something a person did, kept forever with the invoice.</summary>
+public sealed record HumanAction(string Actor, string Action, Outcome? Outcome, string? Note, DateTimeOffset At);
+
+/// <summary>
+/// An email waiting to be sent. It is written in the same document update as the status change
+/// (a transactional outbox), so "on hold" and "supplier emailed" can never disagree.
+/// </summary>
+public sealed record OutboxEmail(string To, string Subject, string Body, DateTimeOffset QueuedAt, DateTimeOffset? SentAt = null);
 
 /// <summary>The uploaded document. ContentType comes from the file's own bytes, never from the client.</summary>
 public sealed record InvoiceFile(string FileName, string ContentType, long Size, string Sha256);
@@ -30,7 +45,10 @@ public sealed record Invoice(
     string? FailureReason = null,
     AgentRun? Agent = null,
     MatchReport? Match = null,
-    Decision? Decision = null);
+    Decision? Decision = null,
+    IReadOnlyList<HumanAction>? Actions = null,
+    OutboxEmail? Outbox = null,
+    string? Booking = null);
 
 public static class InvoiceIds
 {

@@ -9,7 +9,11 @@ export type InvoiceStatus =
   | 'extractionFailed'
   | 'investigating'
   | 'awaitingReview'
-  | 'investigationFailed';
+  | 'investigationFailed'
+  | 'awaitingApproval'
+  | 'approved'
+  | 'onHold'
+  | 'rejected';
 
 export type Outcome = 'approve' | 'routeForApproval' | 'hold' | 'reject';
 

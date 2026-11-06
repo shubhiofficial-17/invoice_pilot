@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Extraction;
 using InvoicePilot.Api.Matching;
+using InvoicePilot.Api.Review;
 using Microsoft.Net.Http.Headers;
 
 namespace InvoicePilot.Api.Invoices;
@@ -38,6 +39,21 @@ public static class InvoiceEndpoints
             }
             return Results.Ok(await matcher.MatchAsync(invoice.Extraction, ct));
         });
+
+        // A person's decision: confirm or override the recommendation, or (approvers) approve or reject.
+        invoices.MapPost("/{id}/actions", async (string id, ReviewRequest request, ReviewService review, HttpContext http, CancellationToken ct) =>
+        {
+            var result = await review.ActAsync(id, request, ActorOf(http), ct);
+            return result.Invoice is { } invoice
+                ? Results.Ok(invoice)
+                : Results.Problem(statusCode: result.Status, title: result.Title, detail: result.Detail);
+        });
+
+        // Emails waiting to go out (held invoices). A mail sender would read from here.
+        app.MapGet("/api/outbox", async (IInvoiceStore store, CancellationToken ct) =>
+            Results.Ok((await store.ListByStatusAsync(InvoiceStatus.OnHold, ct))
+                .Where(i => i.Outbox is not null)
+                .Select(i => new { invoiceId = i.Id, email = i.Outbox })));
 
         // Run the agent again on what was already read.
         invoices.MapPost("/{id}/investigate", async (string id, IInvoiceStore store, AgentQueue queue, TimeProvider clock, CancellationToken ct) =>
@@ -101,6 +117,10 @@ public static class InvoiceEndpoints
 
         return app;
     }
+
+    /// <summary>Who is acting. Replaced by the signed-in user in milestone 11.</summary>
+    public static string ActorOf(HttpContext http) =>
+        http.User.Identity?.IsAuthenticated == true ? http.User.Identity.Name ?? "unknown" : "clerk";
 
     private static async Task<IResult> UploadAsync(
         IFormFile? file, IInvoiceStore store, ExtractionQueue queue, TimeProvider clock, CancellationToken ct)

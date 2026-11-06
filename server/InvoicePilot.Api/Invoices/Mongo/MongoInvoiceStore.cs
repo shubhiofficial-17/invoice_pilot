@@ -31,6 +31,7 @@ public sealed class MongoInvoiceStore : IInvoiceStore
                 new CreateIndexOptions { Unique = true }),
             new CreateIndexModel<InvoiceDoc>(Builders<InvoiceDoc>.IndexKeys.Descending(i => i.ReceivedAt)),
             new CreateIndexModel<InvoiceDoc>(Builders<InvoiceDoc>.IndexKeys.Ascending(i => i.Status)),
+            new CreateIndexModel<InvoiceDoc>(Builders<InvoiceDoc>.IndexKeys.Ascending("outbox.sentAt")),
         ], ct);
     }
 
@@ -160,6 +161,13 @@ public sealed class InvoiceDoc
 
     public BsonDocument? Decision { get; set; }
 
+    public BsonArray? Actions { get; set; }
+
+    public BsonDocument? Outbox { get; set; }
+
+    /// <summary>The ERP booking key, once booked.</summary>
+    public string? Booking { get; set; }
+
     public static InvoiceDoc From(Invoice i) => new()
     {
         Id = i.Id,
@@ -176,6 +184,9 @@ public sealed class InvoiceDoc
         Agent = i.Agent is null ? null : StoredJson.ToBson(i.Agent),
         Match = i.Match is null ? null : StoredJson.ToBson(i.Match),
         Decision = i.Decision is null ? null : StoredJson.ToBson(i.Decision),
+        Actions = i.Actions is null ? null : new BsonArray(i.Actions.Select(a => StoredJson.ToBson(a))),
+        Outbox = i.Outbox is null ? null : StoredJson.ToBson(i.Outbox),
+        Booking = i.Booking,
     };
 
     public Invoice ToModel() => new(
@@ -189,5 +200,8 @@ public sealed class InvoiceDoc
         FailureReason,
         Agent is null ? null : StoredJson.FromBson<InvoicePilot.Api.Agent.AgentRun>(Agent),
         Match is null ? null : StoredJson.FromBson<InvoicePilot.Api.Matching.MatchReport>(Match),
-        Decision is null ? null : StoredJson.FromBson<InvoicePilot.Api.Policy.Decision>(Decision));
+        Decision is null ? null : StoredJson.FromBson<InvoicePilot.Api.Policy.Decision>(Decision),
+        Actions?.Select(a => StoredJson.FromBson<HumanAction>(a.AsBsonDocument)).ToList(),
+        Outbox is null ? null : StoredJson.FromBson<OutboxEmail>(Outbox),
+        Booking);
 }

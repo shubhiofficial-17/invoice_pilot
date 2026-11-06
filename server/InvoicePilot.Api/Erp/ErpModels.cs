@@ -44,6 +44,7 @@ public sealed record GoodsReceipt(
 public enum PostedInvoiceStatus { Posted, Paid }
 
 /// <summary>An invoice already booked in the ERP. Used to catch duplicates.</summary>
+/// <param name="SourceRef">The InvoicePilot invoice id that booked it (null for history loaded from elsewhere).</param>
 public sealed record PostedInvoice(
     string SupplierId,
     string InvoiceNumber,
@@ -51,7 +52,8 @@ public sealed record PostedInvoice(
     string? PoNumber,
     string Currency,
     decimal Total,
-    PostedInvoiceStatus Status);
+    PostedInvoiceStatus Status,
+    string? SourceRef = null);
 
 public sealed record ErpData(
     IReadOnlyList<Supplier> Suppliers,

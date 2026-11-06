@@ -9,6 +9,7 @@ using InvoicePilot.Api.Invoices;
 using InvoicePilot.Api.Invoices.Mongo;
 using InvoicePilot.Api.Matching;
 using InvoicePilot.Api.Policy;
+using InvoicePilot.Api.Review;
 using Microsoft.AspNetCore.Http.Features;
 using MongoDB.Driver;
 
@@ -55,10 +56,12 @@ builder.Services.Configure<ApPolicyOptions>(builder.Configuration.GetSection("Po
 builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection("Agent"));
 builder.Services.AddTransient<InvoiceAgent>();
 builder.Services.AddTransient<DecisionService>();
+builder.Services.AddTransient<ReviewService>();
 builder.Services.AddSingleton<AgentQueue>();
 
 builder.Services.AddHostedService<ErpSeeder>();
 builder.Services.AddHostedService<InvoiceStoreInitializer>();
+builder.Services.AddHostedService<BookingReconciler>();
 builder.Services.AddHostedService<ExtractionWorker>();
 builder.Services.AddHostedService<AgentWorker>();
 

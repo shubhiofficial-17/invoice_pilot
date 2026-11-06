@@ -97,16 +97,17 @@ public sealed class PostedInvoiceDoc
     public string Currency { get; set; } = "";
     [BsonRepresentation(BsonType.Decimal128)] public decimal Total { get; set; }
     [BsonRepresentation(BsonType.String)] public PostedInvoiceStatus Status { get; set; }
+    public string? SourceRef { get; set; }
 
     public static PostedInvoiceDoc From(PostedInvoice i) => new()
     {
         Key = ErpNormalizer.InvoiceKey(i), SupplierId = i.SupplierId, InvoiceNumber = i.InvoiceNumber,
         InvoiceDate = Dates.ToUtc(i.InvoiceDate), PoNumber = i.PoNumber, Currency = i.Currency,
-        Total = i.Total, Status = i.Status,
+        Total = i.Total, Status = i.Status, SourceRef = i.SourceRef,
     };
 
     public PostedInvoice ToModel() => new(
-        SupplierId, InvoiceNumber, Dates.FromUtc(InvoiceDate), PoNumber, Currency, Total, Status);
+        SupplierId, InvoiceNumber, Dates.FromUtc(InvoiceDate), PoNumber, Currency, Total, Status, SourceRef);
 }
 
 internal static class Dates
