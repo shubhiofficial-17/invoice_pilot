@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Ai;
 using InvoicePilot.Api.Invoices;
 
@@ -22,6 +23,7 @@ public sealed class ExtractionQueue
 public sealed class ExtractionWorker(
     ExtractionQueue queue,
     IInvoiceStore store,
+    AgentQueue agentQueue,
     IServiceScopeFactory scopes,
     TimeProvider clock,
     IConfiguration config,
@@ -111,6 +113,10 @@ public sealed class ExtractionWorker(
         if (await store.TryUpdateAsync(next with { UpdatedAt = Now() }, ct) is null)
         {
             log.LogWarning("Invoice {InvoiceId} changed while it was being read; result discarded", id);
+        }
+        else if (next.Status == InvoiceStatus.Extracted)
+        {
+            agentQueue.Enqueue(id); // next stage: the agent investigates
         }
     }
 

@@ -331,18 +331,18 @@ public class ExtractionFlowTests(AiAppFactory factory) : IClassFixture<AiAppFact
     [Fact]
     public async Task An_uploaded_pdf_is_read_in_the_background()
     {
+        factory.Llm.Handler = null;
         factory.Llm.Reply = _ => SampleReplies.AcmeJson;
         var pdf = TestPdfs.WithLines("Acme Industrial Supplies", "Invoice AC/2026/0420", Guid.NewGuid().ToString());
 
         var uploaded = await _client.UploadAsync(pdf);
-        var invoice = await _client.WaitUntilReadAsync(uploaded.Id);
+        var invoice = await _client.WaitUntilSettledAsync(uploaded.Id);
 
-        Assert.Equal(InvoiceStatus.Extracted, invoice.Status);
         Assert.NotNull(invoice.Extraction);
         Assert.Equal("AC/2026/0420", invoice.Extraction.Data.InvoiceNumber);
         Assert.Equal(6726.00m, invoice.Extraction.Data.Total);
         Assert.Equal("fake-model", invoice.Extraction.Model);
-        Assert.True(invoice.Version >= 3); // received → extracting → extracted
+        Assert.True(invoice.Version >= 3); // received → extracting → extracted → (agent)
     }
 
     [Fact]
@@ -374,8 +374,8 @@ public class ExtractionFlowTests(AiAppFactory factory) : IClassFixture<AiAppFact
         Assert.Equal(HttpStatusCode.Accepted, retry.StatusCode);
 
         var read = await _client.WaitUntilReadAsync(uploaded.Id);
-        Assert.Equal(InvoiceStatus.Extracted, read.Status);
-        Assert.Null(read.FailureReason);
+        Assert.NotEqual(InvoiceStatus.ExtractionFailed, read.Status);
+        Assert.NotNull(read.Extraction);
     }
 
     [Fact]

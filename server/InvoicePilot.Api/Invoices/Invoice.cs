@@ -1,9 +1,14 @@
 using System.Security.Cryptography;
+using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Extraction;
 
 namespace InvoicePilot.Api.Invoices;
 
-public enum InvoiceStatus { Received, Extracting, Extracted, ExtractionFailed }
+/// <summary>
+/// The pipeline: Received → Extracting → Extracted → Investigating → AwaitingReview.
+/// A failed step parks the invoice in ExtractionFailed or InvestigationFailed for a person.
+/// </summary>
+public enum InvoiceStatus { Received, Extracting, Extracted, ExtractionFailed, Investigating, AwaitingReview, InvestigationFailed }
 
 /// <summary>The uploaded document. ContentType comes from the file's own bytes, never from the client.</summary>
 public sealed record InvoiceFile(string FileName, string ContentType, long Size, string Sha256);
@@ -20,7 +25,8 @@ public sealed record Invoice(
     DateTimeOffset UpdatedAt,
     int Version,
     ExtractionResult? Extraction = null,
-    string? FailureReason = null);
+    string? FailureReason = null,
+    AgentRun? Agent = null);
 
 public static class InvoiceIds
 {

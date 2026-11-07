@@ -67,8 +67,12 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         var messages = new JsonArray();
         foreach (var m in request.Messages)
         {
-            JsonNode contentNode;
-            if (m.Content.Count == 1 && m.Content[0].Type == "text")
+            JsonNode? contentNode;
+            if (m.Content.Count == 0)
+            {
+                contentNode = null;
+            }
+            else if (m.Content.Count == 1 && m.Content[0].Type == "text")
             {
                 contentNode = JsonValue.Create(m.Content[0].Text ?? "");
             }
@@ -83,7 +87,23 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 }
                 contentNode = parts;
             }
-            messages.Add(new JsonObject { ["role"] = m.Role, ["content"] = contentNode });
+            var message = new JsonObject { ["role"] = m.Role, ["content"] = contentNode };
+            if (m.ToolCalls is { Count: > 0 } calls)
+            {
+                var callArray = new JsonArray();
+                foreach (var c in calls)
+                {
+                    callArray.Add(new JsonObject
+                    {
+                        ["id"] = c.Id,
+                        ["type"] = "function",
+                        ["function"] = new JsonObject { ["name"] = c.Name, ["arguments"] = c.Arguments },
+                    });
+                }
+                message["tool_calls"] = callArray;
+            }
+            if (m.ToolCallId is not null) message["tool_call_id"] = m.ToolCallId;
+            messages.Add(message);
         }
 
         var body = new JsonObject
@@ -93,6 +113,25 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             ["temperature"] = request.Temperature,
             ["max_tokens"] = request.MaxTokens,
         };
+        if (request.Tools is { Count: > 0 } tools)
+        {
+            var toolArray = new JsonArray();
+            foreach (var t in tools)
+            {
+                toolArray.Add(new JsonObject
+                {
+                    ["type"] = "function",
+                    ["function"] = new JsonObject
+                    {
+                        ["name"] = t.Name,
+                        ["description"] = t.Description,
+                        ["parameters"] = t.Parameters.DeepClone(), // a JsonNode can only have one parent
+                    },
+                });
+            }
+            body["tools"] = toolArray;
+            body["tool_choice"] = "auto";
+        }
         if (request.JsonMode)
         {
             body["response_format"] = new JsonObject { ["type"] = "json_object" };
@@ -109,6 +148,18 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             var message = root.GetProperty("choices")[0].GetProperty("message");
             var text = message.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString()! : "";
             var model = root.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString()! : fallbackModel;
+            var calls = new List<LlmToolCall>();
+            if (message.TryGetProperty("tool_calls", out var tc) && tc.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var call in tc.EnumerateArray())
+                {
+                    var fn = call.GetProperty("function");
+                    calls.Add(new LlmToolCall(
+                        call.TryGetProperty("id", out var id) ? id.GetString() ?? $"call_{calls.Count}" : $"call_{calls.Count}",
+                        fn.GetProperty("name").GetString() ?? "",
+                        fn.TryGetProperty("arguments", out var a) ? (a.ValueKind == JsonValueKind.String ? a.GetString() ?? "{}" : a.GetRawText()) : "{}"));
+                }
+            }
             var usage = LlmUsage.None;
             if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
             {
@@ -116,7 +167,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                     u.TryGetProperty("prompt_tokens", out var pt) && pt.TryGetInt32(out var p) ? p : 0,
                     u.TryGetProperty("completion_tokens", out var ctk) && ctk.TryGetInt32(out var k) ? k : 0);
             }
-            return new LlmResponse(text, model, usage);
+            return new LlmResponse(text, model, usage, calls);
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
         {

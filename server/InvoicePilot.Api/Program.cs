@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Ai;
 using InvoicePilot.Api.Erp;
 using InvoicePilot.Api.Extraction;
@@ -7,6 +8,7 @@ using InvoicePilot.Api.Erp.Mongo;
 using InvoicePilot.Api.Invoices;
 using InvoicePilot.Api.Invoices.Mongo;
 using InvoicePilot.Api.Matching;
+using InvoicePilot.Api.Policy;
 using Microsoft.AspNetCore.Http.Features;
 using MongoDB.Driver;
 
@@ -49,10 +51,15 @@ else
 builder.Services.AddTransient<InvoiceExtractor>();
 builder.Services.AddSingleton<ExtractionQueue>();
 builder.Services.AddTransient<MatchService>();
+builder.Services.Configure<ApPolicyOptions>(builder.Configuration.GetSection("Policy"));
+builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection("Agent"));
+builder.Services.AddTransient<InvoiceAgent>();
+builder.Services.AddSingleton<AgentQueue>();
 
 builder.Services.AddHostedService<ErpSeeder>();
 builder.Services.AddHostedService<InvoiceStoreInitializer>();
 builder.Services.AddHostedService<ExtractionWorker>();
+builder.Services.AddHostedService<AgentWorker>();
 
 var app = builder.Build();
 
@@ -61,6 +68,8 @@ app.UseStatusCodePages();
 
 app.MapGet("/api/health", () => Results.Ok(new HealthResponse("ok", "invoicepilot-api", storage)));
 app.MapGet("/api/ai/status", (ILlmClient llm) => Results.Ok(new { enabled = llm.Enabled, model = llm.Model }));
+app.MapGet("/api/policy", (Microsoft.Extensions.Options.IOptions<ApPolicyOptions> p) =>
+    Results.Text(ApPolicy.Describe(p.Value), "text/markdown"));
 app.MapErpEndpoints();
 app.MapInvoiceEndpoints();
 

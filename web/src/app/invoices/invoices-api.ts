@@ -2,7 +2,46 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
-export type InvoiceStatus = 'received' | 'extracting' | 'extracted' | 'extractionFailed';
+export type InvoiceStatus =
+  | 'received'
+  | 'extracting'
+  | 'extracted'
+  | 'extractionFailed'
+  | 'investigating'
+  | 'awaitingReview'
+  | 'investigationFailed';
+
+export type Outcome = 'approve' | 'routeForApproval' | 'hold' | 'reject';
+
+export interface AgentStep {
+  index: number;
+  kind: 'model' | 'tool';
+  toolName: string | null;
+  arguments: string | null;
+  output: string;
+  isError: boolean;
+  promptTokens: number;
+  completionTokens: number;
+  durationMs: number;
+  at: string;
+}
+
+export interface AgentRun {
+  model: string;
+  status: 'completed' | 'failed';
+  proposal: {
+    outcome: Outcome;
+    reason: string;
+    findingCodes: string[];
+    supplierEmail: { to: string; subject: string; body: string } | null;
+  } | null;
+  failureReason: string | null;
+  steps: AgentStep[];
+  usage: { promptTokens: number; completionTokens: number };
+  modelCalls: number;
+  startedAt: string;
+  finishedAt: string;
+}
 
 export interface InvoiceFile {
   fileName: string;
@@ -58,6 +97,7 @@ export interface Invoice {
   version: number;
   extraction: Extraction | null;
   failureReason: string | null;
+  agent: AgentRun | null;
 }
 
 @Injectable({ providedIn: 'root' })

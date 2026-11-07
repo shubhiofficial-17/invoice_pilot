@@ -14,6 +14,7 @@ function invoice(id: string, fileName = `${id}.pdf`): Invoice {
     version: 1,
     extraction: null,
     failureReason: null,
+    agent: null,
   };
 }
 

@@ -106,6 +106,22 @@ public sealed class MongoInvoiceStore : IInvoiceStore
     }
 }
 
+/// <summary>Stores nested, money-free records (like agent traces) as BSON via System.Text.Json.</summary>
+public static class StoredJson
+{
+    private static readonly System.Text.Json.JsonSerializerOptions Options = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) },
+    };
+
+    public static BsonDocument ToBson<T>(T value) => BsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(value, Options));
+
+    public static T FromBson<T>(BsonDocument doc) =>
+        System.Text.Json.JsonSerializer.Deserialize<T>(
+            doc.ToJson(new MongoDB.Bson.IO.JsonWriterSettings { OutputMode = MongoDB.Bson.IO.JsonOutputMode.RelaxedExtendedJson }),
+            Options)!;
+}
+
 public sealed class InvoiceFileDoc
 {
     [BsonId] public string Id { get; set; } = "";
@@ -131,6 +147,9 @@ public sealed class InvoiceDoc
     public ExtractionDoc? Extraction { get; set; }
     public string? FailureReason { get; set; }
 
+    /// <summary>The agent's trace, stored as a JSON document (no money in it; see ADR 0006).</summary>
+    public BsonDocument? Agent { get; set; }
+
     public static InvoiceDoc From(Invoice i) => new()
     {
         Id = i.Id,
@@ -144,6 +163,7 @@ public sealed class InvoiceDoc
         Version = i.Version,
         Extraction = i.Extraction is null ? null : ExtractionDoc.From(i.Extraction),
         FailureReason = i.FailureReason,
+        Agent = i.Agent is null ? null : StoredJson.ToBson(i.Agent),
     };
 
     public Invoice ToModel() => new(
@@ -154,5 +174,6 @@ public sealed class InvoiceDoc
         new DateTimeOffset(DateTime.SpecifyKind(UpdatedAt, DateTimeKind.Utc)),
         Version,
         Extraction?.ToModel(),
-        FailureReason);
+        FailureReason,
+        Agent is null ? null : StoredJson.FromBson<InvoicePilot.Api.Agent.AgentRun>(Agent));
 }
