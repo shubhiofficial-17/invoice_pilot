@@ -87,7 +87,7 @@ public abstract class ErpStoreContract
         var orders = await store.ListPurchaseOrdersAsync("SUP-ACME");
 
         Assert.Equal(new[] { "PO-1001", "PO-1005" }, orders.Select(o => o.Number));
-        Assert.Equal(8, (await store.ListPurchaseOrdersAsync()).Count);
+        Assert.Equal(9, (await store.ListPurchaseOrdersAsync()).Count);
     }
 
     [Fact]

@@ -19,3 +19,6 @@ coverage/
 # Local secrets
 .env
 appsettings.Local.json
+
+# Evaluation output
+eval/results/
