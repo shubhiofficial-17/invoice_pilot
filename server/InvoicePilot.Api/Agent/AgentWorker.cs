@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using InvoicePilot.Api.Ai;
+using InvoicePilot.Api.Audit;
 using InvoicePilot.Api.Invoices;
 using InvoicePilot.Api.Matching;
 using InvoicePilot.Api.Policy;
@@ -21,6 +22,7 @@ public sealed class AgentWorker(
     AgentQueue queue,
     IInvoiceStore store,
     IServiceScopeFactory scopes,
+    IAuditLog audit,
     TimeProvider clock,
     IConfiguration config,
     ILogger<AgentWorker> log) : BackgroundService
@@ -100,9 +102,51 @@ public sealed class AgentWorker(
                 id, run.Status, run.Proposal?.Outcome, run.ModelCalls, run.Usage.PromptTokens + run.Usage.CompletionTokens);
         }
 
+        // Recorded before the status changes, so anyone who sees "awaiting review" can read the whole story.
+        await RecordAsync(next, ct);
         if (await store.TryUpdateAsync(next with { UpdatedAt = Now() }, ct) is null)
         {
             log.LogWarning("Invoice {InvoiceId} changed during the agent run; result discarded", id);
+            await audit.AppendAsync(id, "system", "agent.result_discarded",
+                "The invoice changed during the agent run, so this result was not saved.", ct: ct);
+        }
+    }
+
+    private async Task RecordAsync(Invoice invoice, CancellationToken ct)
+    {
+        if (invoice.Agent is { } run)
+        {
+            foreach (var step in run.Steps.Where(s => s.Kind == StepKind.Tool))
+            {
+                await audit.AppendAsync(invoice.Id, "agent", "agent.tool_call",
+                    $"{step.ToolName}{(step.IsError ? " (error)" : "")}",
+                    AuditData.Of(("tool", step.ToolName), ("arguments", step.Arguments), ("isError", step.IsError),
+                        ("output", step.Output), ("durationMs", step.DurationMs)), ct);
+            }
+            await audit.AppendAsync(invoice.Id, "agent", run.Status == AgentRunStatus.Completed ? "agent.proposed" : "agent.failed",
+                run.Proposal is { } p ? $"Proposed {p.Outcome}: {p.Reason}" : run.FailureReason ?? "The agent failed",
+                AuditData.Of(("model", run.Model), ("modelCalls", run.ModelCalls), ("promptTokens", run.Usage.PromptTokens),
+                    ("completionTokens", run.Usage.CompletionTokens), ("outcome", run.Proposal?.Outcome),
+                    ("findingCodes", run.Proposal is null ? null : string.Join(",", run.Proposal.FindingCodes))), ct);
+        }
+        else if (invoice.FailureReason is { } reason)
+        {
+            await audit.AppendAsync(invoice.Id, "system", "agent.skipped", reason, ct: ct);
+        }
+
+        if (invoice.Decision is { } d)
+        {
+            if (d.Source == DecisionSource.PolicyOverride)
+            {
+                await audit.AppendAsync(invoice.Id, "policy", "policy.override",
+                    $"Policy changed {d.AgentOutcome} to {d.Outcome}",
+                    AuditData.Of(("agentOutcome", d.AgentOutcome), ("required", d.Policy.Required),
+                        ("rules", string.Join(",", d.Policy.Rules.Where(r => r.Outcome == d.Policy.Required).Select(r => r.FindingCode)))), ct);
+            }
+            await audit.AppendAsync(invoice.Id, "policy", "decision.recommended", $"Recommended {d.Outcome} ({d.Source})",
+                AuditData.Of(("outcome", d.Outcome), ("source", d.Source), ("approver", d.Approver?.Email),
+                    ("supplierEmailTo", d.SupplierEmail?.To), ("findings", invoice.Match is null ? null
+                        : string.Join(",", invoice.Match.Findings.Select(f => $"{f.Code}:{f.Severity}")))), ct);
         }
     }
 

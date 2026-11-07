@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Ai;
+using InvoicePilot.Api.Audit;
 using InvoicePilot.Api.Invoices;
 
 namespace InvoicePilot.Api.Extraction;
@@ -24,6 +25,7 @@ public sealed class ExtractionWorker(
     ExtractionQueue queue,
     IInvoiceStore store,
     AgentQueue agentQueue,
+    IAuditLog audit,
     IServiceScopeFactory scopes,
     TimeProvider clock,
     IConfiguration config,
@@ -114,9 +116,18 @@ public sealed class ExtractionWorker(
         {
             log.LogWarning("Invoice {InvoiceId} changed while it was being read; result discarded", id);
         }
-        else if (next.Status == InvoiceStatus.Extracted)
+        else if (next.Extraction is { } r && next.Status == InvoiceStatus.Extracted)
         {
+            await audit.AppendAsync(id, "system", "extraction.completed",
+                $"Read {r.Data.InvoiceNumber ?? "an invoice"} from {r.Data.SupplierName ?? "an unknown supplier"} ({r.Issues.Count} issue(s))",
+                AuditData.Of(("model", r.Model), ("source", r.Source), ("attempts", r.Attempts),
+                    ("promptTokens", r.Usage.PromptTokens), ("completionTokens", r.Usage.CompletionTokens),
+                    ("issues", string.Join(",", r.Issues.Select(i => i.Code)))), ct);
             agentQueue.Enqueue(id); // next stage: the agent investigates
+        }
+        else
+        {
+            await audit.AppendAsync(id, "system", "extraction.failed", next.FailureReason ?? "Could not read the invoice", ct: ct);
         }
     }
 

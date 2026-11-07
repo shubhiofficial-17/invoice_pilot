@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Ai;
+using InvoicePilot.Api.Audit;
 using InvoicePilot.Api.Erp;
 using InvoicePilot.Api.Extraction;
 using InvoicePilot.Api.Erp.Mongo;
@@ -32,11 +33,13 @@ if (storage == "mongo")
     builder.Services.AddSingleton(sp => sp.GetRequiredService<IMongoClient>().GetDatabase(url.DatabaseName ?? "invoicepilot"));
     builder.Services.AddSingleton<IErpStore, MongoErpStore>();
     builder.Services.AddSingleton<IInvoiceStore, MongoInvoiceStore>();
+    builder.Services.AddSingleton<IAuditLog, MongoAuditLog>();
 }
 else
 {
     builder.Services.AddSingleton<IErpStore, InMemoryErpStore>();
     builder.Services.AddSingleton<IInvoiceStore, InMemoryInvoiceStore>();
+    builder.Services.AddSingleton<IAuditLog, InMemoryAuditLog>();
 }
 
 // AI: any OpenAI-compatible endpoint, normally the LLM Gateway. Without one, reading is off.
@@ -61,6 +64,7 @@ builder.Services.AddSingleton<AgentQueue>();
 
 builder.Services.AddHostedService<ErpSeeder>();
 builder.Services.AddHostedService<InvoiceStoreInitializer>();
+builder.Services.AddHostedService<AuditInitializer>();
 builder.Services.AddHostedService<BookingReconciler>();
 builder.Services.AddHostedService<ExtractionWorker>();
 builder.Services.AddHostedService<AgentWorker>();
