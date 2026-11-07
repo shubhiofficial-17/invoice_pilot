@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using InvoicePilot.Api.Extraction;
+using InvoicePilot.Api.Matching;
 using Microsoft.Net.Http.Headers;
 
 namespace InvoicePilot.Api.Invoices;
@@ -23,6 +24,19 @@ public static class InvoiceEndpoints
 
         invoices.MapGet("/{id}", async (string id, IInvoiceStore store, CancellationToken ct) =>
             await store.GetAsync(id, ct) is { } invoice ? Results.Ok(invoice) : Results.NotFound());
+
+        // The 3-way match, computed fresh from the ERP each time.
+        invoices.MapGet("/{id}/match", async (string id, IInvoiceStore store, MatchService matcher, CancellationToken ct) =>
+        {
+            var invoice = await store.GetAsync(id, ct);
+            if (invoice is null) return Results.NotFound();
+            if (invoice.Extraction is null)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Not read yet",
+                    detail: "The invoice has to be read before it can be matched.");
+            }
+            return Results.Ok(await matcher.MatchAsync(invoice.Extraction, ct));
+        });
 
         // Read the invoice again, e.g. after a failure or once AI has been configured.
         invoices.MapPost("/{id}/extract", async (string id, IInvoiceStore store, ExtractionQueue queue, TimeProvider clock, CancellationToken ct) =>
