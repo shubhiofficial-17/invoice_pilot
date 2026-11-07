@@ -54,6 +54,7 @@ builder.Services.AddTransient<MatchService>();
 builder.Services.Configure<ApPolicyOptions>(builder.Configuration.GetSection("Policy"));
 builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection("Agent"));
 builder.Services.AddTransient<InvoiceAgent>();
+builder.Services.AddTransient<DecisionService>();
 builder.Services.AddSingleton<AgentQueue>();
 
 builder.Services.AddHostedService<ErpSeeder>();

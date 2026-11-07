@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Extraction;
+using InvoicePilot.Api.Matching;
+using InvoicePilot.Api.Policy;
 
 namespace InvoicePilot.Api.Invoices;
 
@@ -26,7 +28,9 @@ public sealed record Invoice(
     int Version,
     ExtractionResult? Extraction = null,
     string? FailureReason = null,
-    AgentRun? Agent = null);
+    AgentRun? Agent = null,
+    MatchReport? Match = null,
+    Decision? Decision = null);
 
 public static class InvoiceIds
 {

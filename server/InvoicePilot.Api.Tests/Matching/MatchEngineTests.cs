@@ -27,7 +27,7 @@ public class MatchEngineTests
             new DateOnly(2026, 11, 2).AddDays(supplier.PaymentTermsDays), po.Number, po.Currency, lines, subtotal, tax, subtotal + tax);
     }
 
-    private static MatchReport Match(ExtractedInvoice inv)
+    public static MatchReport Match(ExtractedInvoice inv)
     {
         var po = inv.PoNumber is null ? null : Seed.PurchaseOrders.FirstOrDefault(p => p.Number == inv.PoNumber);
         var supplier = MatchEngine.ResolveSupplier(inv, Seed.Suppliers, out _)

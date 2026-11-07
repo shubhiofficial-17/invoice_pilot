@@ -1,6 +1,8 @@
 using System.Threading.Channels;
 using InvoicePilot.Api.Ai;
 using InvoicePilot.Api.Invoices;
+using InvoicePilot.Api.Matching;
+using InvoicePilot.Api.Policy;
 
 namespace InvoicePilot.Api.Agent;
 
@@ -69,22 +71,31 @@ public sealed class AgentWorker(
 
         await using var scope = scopes.CreateAsyncScope();
         var llm = scope.ServiceProvider.GetRequiredService<ILlmClient>();
+        var matcher = scope.ServiceProvider.GetRequiredService<MatchService>();
+        var decider = scope.ServiceProvider.GetRequiredService<DecisionService>();
         Invoice next;
         if (!llm.Enabled)
         {
+            // No agent, but the deterministic match and policy still give the clerk a recommendation.
+            var match = await matcher.MatchAsync(claimed.Extraction!, ct);
             next = claimed with
             {
                 Status = InvoiceStatus.InvestigationFailed,
                 FailureReason = "The agent is turned off: no AI endpoint is configured (Ai:BaseUrl).",
+                Match = match,
+                Decision = await decider.DecideAsync(match, null, ct),
             };
         }
         else
         {
             var agent = scope.ServiceProvider.GetRequiredService<InvoiceAgent>();
             var run = await agent.RunAsync(claimed, ct);
+            // The guardrail: re-run the match (the agent's view doesn't count) and apply the policy.
+            var match = await matcher.MatchAsync(claimed.Extraction!, ct);
+            var decision = await decider.DecideAsync(match, run.Status == AgentRunStatus.Completed ? run.Proposal : null, ct);
             next = run.Status == AgentRunStatus.Completed
-                ? claimed with { Status = InvoiceStatus.AwaitingReview, Agent = run, FailureReason = null }
-                : claimed with { Status = InvoiceStatus.InvestigationFailed, Agent = run, FailureReason = run.FailureReason };
+                ? claimed with { Status = InvoiceStatus.AwaitingReview, Agent = run, Match = match, Decision = decision, FailureReason = null }
+                : claimed with { Status = InvoiceStatus.InvestigationFailed, Agent = run, Match = match, Decision = decision, FailureReason = run.FailureReason };
             log.LogInformation("Agent run for {InvoiceId}: {Status}, {Outcome}, {Calls} model calls, {Tokens} tokens",
                 id, run.Status, run.Proposal?.Outcome, run.ModelCalls, run.Usage.PromptTokens + run.Usage.CompletionTokens);
         }
