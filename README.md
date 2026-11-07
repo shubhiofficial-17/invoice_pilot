@@ -41,8 +41,8 @@ Tests: `dotnet test server/InvoicePilot.sln` and `cd web && npm run test:ci`.
 | 1 | Skeleton: API, web, Mongo, Docker, CI | ✅ |
 | 2 | Mock ERP: POs, goods receipts, suppliers, invoice history | ✅ |
 | 3a | Invoice upload and storage | ✅ |
-| 3b | Extraction with an LLM | ⏳ |
-| 4 | 3-way match engine | |
+| 3b | Extraction with an LLM | ✅ |
+| 4 | 3-way match engine | ⏳ |
 | 5 | Agent loop (own tool calling, state, retries) | |
 | 6 | AP policy and guardrails | |
 | 7 | Actions and human approval checkpoints | |
@@ -50,6 +50,8 @@ Tests: `dotnet test server/InvoicePilot.sln` and `cd web && npm run test:ci`.
 | 9 | AP Inbox UI | |
 | 10 | Evaluation harness (synthetic invoice set) | |
 | 11 | Hardening: roles, prompt-injection tests, E2E | |
+
+To read invoices, point the API at an OpenAI-compatible endpoint (normally the LLM Gateway): `Ai__BaseUrl`, `Ai__ApiKey`, `Ai__Model`. Without it, uploads work but invoices are marked "could not read".
 
 With no `ConnectionStrings:Mongo` set, the API uses an in-memory store with the demo ERP data loaded.
 

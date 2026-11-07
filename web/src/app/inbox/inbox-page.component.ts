@@ -17,6 +17,7 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
   template: `
     <div class="head">
       <h1>AP Inbox</h1>
+      <button type="button" class="link" data-testid="refresh" (click)="load()">Refresh</button>
       <label class="upload" [class.busy]="uploading()">
         {{ uploading() ? 'Uploading…' : 'Upload invoice' }}
         <input
@@ -40,15 +41,29 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
     } @else {
       <table>
         <thead>
-          <tr><th>File</th><th>Status</th><th>Received</th><th class="num">Size</th></tr>
+          <tr><th>File</th><th>Supplier</th><th>Invoice #</th><th class="num">Total</th><th>Status</th><th>Received</th></tr>
         </thead>
         <tbody>
           @for (invoice of invoices(); track invoice.id) {
             <tr data-testid="invoice-row">
               <td><a [href]="api.fileUrl(invoice.id)" target="_blank" rel="noopener">{{ invoice.file.fileName }}</a></td>
-              <td><span class="badge" [class]="invoice.status">{{ label(invoice.status) }}</span></td>
+              <td>{{ invoice.extraction?.data?.supplierName ?? '—' }}</td>
+              <td>{{ invoice.extraction?.data?.invoiceNumber ?? '—' }}</td>
+              <td class="num">
+                @if (invoice.extraction?.data?.total != null) {
+                  {{ invoice.extraction!.data.currency }} {{ invoice.extraction!.data.total | number: '1.2-2' }}
+                } @else { — }
+              </td>
+              <td>
+                <span class="badge" [class]="invoice.status" [attr.title]="invoice.failureReason">{{ label(invoice.status) }}</span>
+                @if (invoice.extraction?.issues?.length) {
+                  <span class="issues" data-testid="issues" [attr.title]="issueText(invoice)">{{ invoice.extraction!.issues.length }} issue(s)</span>
+                }
+                @if (invoice.status === 'extractionFailed') {
+                  <button type="button" class="link" data-testid="retry" (click)="retry(invoice)">Retry</button>
+                }
+              </td>
               <td>{{ invoice.receivedAt | date: 'd MMM y, HH:mm' }}</td>
-              <td class="num">{{ invoice.file.size / 1024 | number: '1.0-0' }} KB</td>
             </tr>
           }
         </tbody>
@@ -56,8 +71,10 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
     }
   `,
   styles: `
-    .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-    h1 { margin: 0; font-size: 1.4rem; }
+    .head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+    h1 { margin: 0 auto 0 0; font-size: 1.4rem; }
+    .link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0 0.25rem; }
+    .issues { margin-left: 0.4rem; font-size: 0.8rem; color: var(--warn); }
     .upload { background: var(--accent); color: #fff; padding: 0.5rem 0.9rem; border-radius: 6px; cursor: pointer; }
     .upload.busy { opacity: 0.6; cursor: progress; }
     .upload input { display: none; }
@@ -81,6 +98,10 @@ export class InboxPageComponent implements OnInit {
   readonly error = signal<string | null>(null);
 
   ngOnInit(): void {
+    this.load();
+  }
+
+  load(): void {
     this.api.list().subscribe({
       next: (list) => {
         this.invoices.set(list);
@@ -91,6 +112,22 @@ export class InboxPageComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  issueText(invoice: Invoice): string {
+    return (invoice.extraction?.issues ?? []).map((i) => i.message).join('\n');
+  }
+
+  retry(invoice: Invoice): void {
+    this.error.set(null);
+    this.api.extract(invoice.id).subscribe({
+      next: (updated) => this.replace(updated),
+      error: (err) => this.error.set(problemMessage(err, 'Could not retry.')),
+    });
+  }
+
+  private replace(updated: Invoice): void {
+    this.invoices.update((list) => list.map((i) => (i.id === updated.id ? updated : i)));
   }
 
   label(status: InvoiceStatus): string {

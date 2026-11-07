@@ -11,6 +11,44 @@ export interface InvoiceFile {
   sha256: string;
 }
 
+export interface ExtractedLine {
+  description: string;
+  sku: string | null;
+  quantity: number;
+  unitPrice: number;
+  taxRate: number | null;
+  amount: number | null;
+}
+
+export interface ExtractedInvoice {
+  supplierName: string | null;
+  supplierTaxId: string | null;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  poNumber: string | null;
+  currency: string | null;
+  lines: ExtractedLine[];
+  subtotal: number | null;
+  taxTotal: number | null;
+  total: number | null;
+}
+
+export interface ExtractionIssue {
+  code: string;
+  message: string;
+}
+
+export interface Extraction {
+  data: ExtractedInvoice;
+  issues: ExtractionIssue[];
+  source: 'pdf-text' | 'image';
+  model: string;
+  attempts: number;
+  usage: { promptTokens: number; completionTokens: number };
+  at: string;
+}
+
 export interface Invoice {
   id: string;
   status: InvoiceStatus;
@@ -18,6 +56,8 @@ export interface Invoice {
   receivedAt: string;
   updatedAt: string;
   version: number;
+  extraction: Extraction | null;
+  failureReason: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -36,6 +76,11 @@ export class InvoicesApi {
     const form = new FormData();
     form.append('file', file, file.name);
     return this.http.post<Invoice>('/api/invoices', form);
+  }
+
+  /** Reads the invoice again (after a failure, or once AI is configured). */
+  extract(id: string): Observable<Invoice> {
+    return this.http.post<Invoice>(`/api/invoices/${encodeURIComponent(id)}/extract`, null);
   }
 
   fileUrl(id: string): string {

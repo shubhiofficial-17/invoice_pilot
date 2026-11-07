@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InvoicePilot.Api.Ai;
 using InvoicePilot.Api.Erp;
+using InvoicePilot.Api.Extraction;
 using InvoicePilot.Api.Erp.Mongo;
 using InvoicePilot.Api.Invoices;
 using InvoicePilot.Api.Invoices.Mongo;
@@ -32,8 +34,23 @@ else
     builder.Services.AddSingleton<IErpStore, InMemoryErpStore>();
     builder.Services.AddSingleton<IInvoiceStore, InMemoryInvoiceStore>();
 }
+
+// AI: any OpenAI-compatible endpoint, normally the LLM Gateway. Without one, reading is off.
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Ai:BaseUrl"]))
+{
+    builder.Services.AddHttpClient<ILlmClient, OpenAiCompatibleLlmClient>();
+}
+else
+{
+    builder.Services.AddSingleton<ILlmClient, DisabledLlmClient>();
+}
+builder.Services.AddTransient<InvoiceExtractor>();
+builder.Services.AddSingleton<ExtractionQueue>();
+
 builder.Services.AddHostedService<ErpSeeder>();
 builder.Services.AddHostedService<InvoiceStoreInitializer>();
+builder.Services.AddHostedService<ExtractionWorker>();
 
 var app = builder.Build();
 
@@ -41,6 +58,7 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 
 app.MapGet("/api/health", () => Results.Ok(new HealthResponse("ok", "invoicepilot-api", storage)));
+app.MapGet("/api/ai/status", (ILlmClient llm) => Results.Ok(new { enabled = llm.Enabled, model = llm.Model }));
 app.MapErpEndpoints();
 app.MapInvoiceEndpoints();
 

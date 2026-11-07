@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using InvoicePilot.Api.Extraction;
 using Microsoft.Net.Http.Headers;
 
 namespace InvoicePilot.Api.Invoices;
@@ -23,6 +24,29 @@ public static class InvoiceEndpoints
         invoices.MapGet("/{id}", async (string id, IInvoiceStore store, CancellationToken ct) =>
             await store.GetAsync(id, ct) is { } invoice ? Results.Ok(invoice) : Results.NotFound());
 
+        // Read the invoice again, e.g. after a failure or once AI has been configured.
+        invoices.MapPost("/{id}/extract", async (string id, IInvoiceStore store, ExtractionQueue queue, TimeProvider clock, CancellationToken ct) =>
+        {
+            var invoice = await store.GetAsync(id, ct);
+            if (invoice is null) return Results.NotFound();
+            if (invoice.Status is not (InvoiceStatus.ExtractionFailed or InvoiceStatus.Extracted))
+            {
+                return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already being read",
+                    detail: "This invoice is waiting to be read or being read right now.");
+            }
+            var reset = await store.TryUpdateAsync(invoice with
+            {
+                Status = InvoiceStatus.Received, Extraction = null, FailureReason = null, UpdatedAt = clock.GetUtcNow(),
+            }, ct);
+            if (reset is null)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Changed meanwhile",
+                    detail: "The invoice changed while you were looking at it. Reload and try again.");
+            }
+            queue.Enqueue(id);
+            return Results.Accepted($"/api/invoices/{id}", reset);
+        });
+
         invoices.MapGet("/{id}/file", async (string id, IInvoiceStore store, HttpContext http, CancellationToken ct) =>
         {
             var invoice = await store.GetAsync(id, ct);
@@ -40,7 +64,7 @@ public static class InvoiceEndpoints
     }
 
     private static async Task<IResult> UploadAsync(
-        IFormFile? file, IInvoiceStore store, TimeProvider clock, CancellationToken ct)
+        IFormFile? file, IInvoiceStore store, ExtractionQueue queue, TimeProvider clock, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
         {
@@ -83,6 +107,8 @@ public static class InvoiceEndpoints
             Version: 1);
 
         var (stored, created) = await store.AddAsync(invoice, content, ct);
+
+        if (created) queue.Enqueue(stored.Id);
 
         // Uploading the same file twice is harmless: you get the invoice that already exists.
         return created

@@ -128,6 +128,8 @@ public sealed class InvoiceDoc
     public DateTime ReceivedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public int Version { get; set; }
+    public ExtractionDoc? Extraction { get; set; }
+    public string? FailureReason { get; set; }
 
     public static InvoiceDoc From(Invoice i) => new()
     {
@@ -140,6 +142,8 @@ public sealed class InvoiceDoc
         ReceivedAt = i.ReceivedAt.UtcDateTime,
         UpdatedAt = i.UpdatedAt.UtcDateTime,
         Version = i.Version,
+        Extraction = i.Extraction is null ? null : ExtractionDoc.From(i.Extraction),
+        FailureReason = i.FailureReason,
     };
 
     public Invoice ToModel() => new(
@@ -148,5 +152,7 @@ public sealed class InvoiceDoc
         new InvoiceFile(File.FileName, File.ContentType, File.Size, File.Sha256),
         new DateTimeOffset(DateTime.SpecifyKind(ReceivedAt, DateTimeKind.Utc)),
         new DateTimeOffset(DateTime.SpecifyKind(UpdatedAt, DateTimeKind.Utc)),
-        Version);
+        Version,
+        Extraction?.ToModel(),
+        FailureReason);
 }
