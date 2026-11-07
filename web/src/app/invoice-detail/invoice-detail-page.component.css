@@ -1,0 +1,16 @@
+.title { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.title h1 { margin: 0; font-size: 1.3rem; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+.doc { position: sticky; top: 1rem; padding: 0; overflow: hidden; }
+.doc iframe { width: 100%; height: 80vh; border: 0; }
+.doc img { width: 100%; display: block; }
+.warn { border-color: var(--warn); }
+.outcome { display: flex; gap: 0.5rem; align-items: center; }
+.actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.override { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+.override textarea, .override select { width: 100%; font: inherit; padding: 0.4rem; }
+.trace, .audit { margin: 0; padding-left: 1.2rem; font-size: 0.85rem; }
+.trace li { margin-bottom: 0.5rem; }
+.trace li.err code { color: var(--bad); }
+.small { font-size: 0.8rem; }

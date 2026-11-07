@@ -102,7 +102,110 @@ export interface Invoice {
   extraction: Extraction | null;
   failureReason: string | null;
   agent: AgentRun | null;
+  match?: MatchReport | null;
+  decision?: Decision | null;
+  actions?: HumanAction[] | null;
+  outbox?: OutboxEmail | null;
+  booking?: string | null;
 }
+
+export type Severity = 'info' | 'warning' | 'exception' | 'block';
+
+export interface Finding {
+  code: string;
+  severity: Severity;
+  message: string;
+  invoiceLine: number | null;
+  poLine: number | null;
+  expected: number | null;
+  actual: number | null;
+  variancePct: number | null;
+  amountImpact: number | null;
+}
+
+export interface MatchReport {
+  supplierId: string | null;
+  supplierName: string | null;
+  poNumber: string | null;
+  currency: string | null;
+  invoiceTotal: number | null;
+  expectedTotal: number | null;
+  findings: Finding[];
+}
+
+export interface Decision {
+  outcome: Outcome;
+  source: 'agent' | 'policyOverride' | 'policyOnly';
+  reason: string;
+  approver: { role: string; email: string } | null;
+  supplierEmail: { to: string; subject: string; body: string } | null;
+  policy: { required: Outcome; rules: { findingCode: string; outcome: Outcome; why: string }[] };
+  agentOutcome: Outcome | null;
+}
+
+export interface HumanAction {
+  actor: string;
+  action: string;
+  outcome: Outcome | null;
+  note: string | null;
+  at: string;
+}
+
+export interface OutboxEmail {
+  to: string;
+  subject: string;
+  body: string;
+  queuedAt: string;
+  sentAt: string | null;
+}
+
+export interface AuditEvent {
+  invoiceId: string;
+  seq: number;
+  at: string;
+  actor: string;
+  type: string;
+  summary: string;
+  data: Record<string, string>;
+  prevHash: string;
+  hash: string;
+}
+
+export interface AuditTrail {
+  verification: { intact: boolean; brokenAtSeq: number | null; count: number };
+  events: AuditEvent[];
+}
+
+export interface ReviewRequest {
+  action: 'confirm' | 'override' | 'approve' | 'reject';
+  expectedVersion: number;
+  outcome?: Outcome;
+  note?: string;
+}
+
+/** Statuses where the pipeline is still working, so the page keeps refreshing. */
+export const PROCESSING: ReadonlySet<InvoiceStatus> = new Set<InvoiceStatus>(['received', 'extracting', 'extracted', 'investigating']);
+
+export const STATUS_LABELS: Record<InvoiceStatus, string> = {
+  received: 'Received',
+  extracting: 'Reading…',
+  extracted: 'Read',
+  extractionFailed: 'Could not read',
+  investigating: 'Investigating…',
+  awaitingReview: 'Awaiting review',
+  investigationFailed: 'Agent failed',
+  awaitingApproval: 'Awaiting approver',
+  approved: 'Approved',
+  onHold: 'On hold',
+  rejected: 'Rejected',
+};
+
+export const OUTCOME_LABELS: Record<Outcome, string> = {
+  approve: 'Approve',
+  routeForApproval: 'Route for approval',
+  hold: 'Hold',
+  reject: 'Reject',
+};
 
 @Injectable({ providedIn: 'root' })
 export class InvoicesApi {
@@ -120,6 +223,18 @@ export class InvoicesApi {
     const form = new FormData();
     form.append('file', file, file.name);
     return this.http.post<Invoice>('/api/invoices', form);
+  }
+
+  audit(id: string): Observable<AuditTrail> {
+    return this.http.get<AuditTrail>(`/api/invoices/${encodeURIComponent(id)}/audit`);
+  }
+
+  act(id: string, request: ReviewRequest): Observable<Invoice> {
+    return this.http.post<Invoice>(`/api/invoices/${encodeURIComponent(id)}/actions`, request);
+  }
+
+  investigate(id: string): Observable<Invoice> {
+    return this.http.post<Invoice>(`/api/invoices/${encodeURIComponent(id)}/investigate`, null);
   }
 
   /** Reads the invoice again (after a failure, or once AI is configured). */
