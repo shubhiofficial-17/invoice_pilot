@@ -10,6 +10,10 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
   investigating: 'Investigating…',
   awaitingReview: 'Awaiting review',
   investigationFailed: 'Agent failed',
+  awaitingApproval: 'Awaiting approver',
+  approved: 'Approved',
+  onHold: 'On hold',
+  rejected: 'Rejected',
 };
 
 @Component({
