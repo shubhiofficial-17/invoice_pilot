@@ -1,0 +1,11 @@
+{
+  "name": "invoicepilot-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.11.0"
+  }
+}

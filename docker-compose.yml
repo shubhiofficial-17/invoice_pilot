@@ -14,6 +14,18 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Mongo: mongodb://mongo:27017/invoicepilot
+      DataProtection__KeysPath: /keys
+      ForwardedHeaders__Enabled: "true"
+      # Demo users share this password. Change it outside your own machine.
+      Auth__DemoPassword: ${DEMO_PASSWORD:-invoicepilot-demo}
+      # Point at the LLM Gateway (or any OpenAI-compatible endpoint) to use a real model.
+      # Without a base URL, the rule-based demo stand-in is used (not an AI; see DemoLlmClient).
+      Ai__Provider: ${AI_PROVIDER:-demo}
+      Ai__BaseUrl: ${AI_BASE_URL:-}
+      Ai__ApiKey: ${AI_API_KEY:-}
+      Ai__Model: ${AI_MODEL:-gpt-4o-mini}
+    volumes:
+      - keys:/keys
     depends_on:
       mongo:
         condition: service_healthy
@@ -27,3 +39,4 @@ services:
 
 volumes:
   mongo-data:
+  keys:

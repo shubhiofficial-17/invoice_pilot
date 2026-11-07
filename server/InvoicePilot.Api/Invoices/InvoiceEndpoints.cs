@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using InvoicePilot.Api.Accounts;
 using InvoicePilot.Api.Agent;
 using InvoicePilot.Api.Audit;
 using InvoicePilot.Api.Extraction;
@@ -20,7 +21,7 @@ public static class InvoiceEndpoints
         var invoices = app.MapGroup("/api/invoices").WithTags("Invoices");
 
         // Same-origin JSON/multipart API; antiforgery tokens aren't used (see ADR 0003).
-        invoices.MapPost("", UploadAsync).DisableAntiforgery();
+        invoices.MapPost("", UploadAsync).DisableAntiforgery().RequireRateLimiting("uploads");
 
         invoices.MapGet("", async (int? limit, IInvoiceStore store, CancellationToken ct) =>
             Results.Ok(await store.ListAsync(Math.Clamp(limit ?? 100, 1, 500), ct)));
@@ -42,9 +43,10 @@ public static class InvoiceEndpoints
         });
 
         // A person's decision: confirm or override the recommendation, or (approvers) approve or reject.
-        invoices.MapPost("/{id}/actions", async (string id, ReviewRequest request, ReviewService review, HttpContext http, CancellationToken ct) =>
+        invoices.MapPost("/{id}/actions", async (string id, ReviewRequest request, ReviewService review, HttpContext http,
+            Microsoft.Extensions.Options.IOptions<AuthOptions> auth, CancellationToken ct) =>
         {
-            var result = await review.ActAsync(id, request, ActorOf(http), ct);
+            var result = await review.ActAsync(id, request, Reviewer.From(http, auth.Value), ct);
             return result.Invoice is { } invoice
                 ? Results.Ok(invoice)
                 : Results.Problem(statusCode: result.Status, title: result.Title, detail: result.Detail);
@@ -129,7 +131,7 @@ public static class InvoiceEndpoints
         return app;
     }
 
-    /// <summary>Who is acting. Replaced by the signed-in user in milestone 11.</summary>
+    /// <summary>Who is acting: the signed-in user, or "clerk" when sign-in is turned off.</summary>
     public static string ActorOf(HttpContext http) =>
         http.User.Identity?.IsAuthenticated == true ? http.User.Identity.Name ?? "unknown" : "clerk";
 
